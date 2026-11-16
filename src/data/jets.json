@@ -1,0 +1,38 @@
+{
+  "jets": [
+    {
+      "id": "f16c",
+      "name": "F-16C Fighting Falcon",
+      "country": "USA",
+      "tier": 2,
+      "thrust": 129000,
+      "drag": 0.021,
+      "maxSpeed": 2120,
+      "turnRate": 18.5,
+      "stallSpeed": 180,
+      "radarRange": 8000,
+      "stealthFactor": 0.65,
+      "hardpoints": 6,
+      "gunDamage": 12,
+      "flareCount": 60,
+      "price": 1200
+    },
+    {
+      "id": "mig29",
+      "name": "MiG-29 Fulcrum",
+      "country": "Russia",
+      "tier": 2,
+      "thrust": 162800,
+      "drag": 0.023,
+      "maxSpeed": 2200,
+      "turnRate": 19.0,
+      "stallSpeed": 185,
+      "radarRange": 8500,
+      "stealthFactor": 0.75,
+      "hardpoints": 6,
+      "gunDamage": 12,
+      "flareCount": 60,
+      "price": 1000
+    }
+  ]
+}

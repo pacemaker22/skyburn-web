@@ -1,0 +1,154 @@
+// Skyburn Phase 0 - GLSL ES 3.00 shaders as strings (PRD: /src/render/shaders/ - GLSL as strings).
+// All shaders are original. Sky gradient + sun disc, heightmap terrain, procedural ocean waves,
+// Lambert jet material. Fog shared: exp2-style, tuned for multi-km view distances.
+
+export const TERRAIN_VS = `#version 300 es
+precision highp float;
+in vec3 aPos;
+in vec3 aNormal;
+in vec3 aColor;
+uniform mat4 uViewProj;
+out vec3 vNormal;
+out vec3 vColor;
+out vec3 vWorld;
+void main() {
+  vNormal = aNormal;
+  vColor = aColor;
+  vWorld = aPos;
+  gl_Position = uViewProj * vec4(aPos, 1.0);
+}`;
+
+export const TERRAIN_FS = `#version 300 es
+precision highp float;
+in vec3 vNormal;
+in vec3 vColor;
+in vec3 vWorld;
+uniform vec3 uSunDir;
+uniform vec3 uCamPos;
+uniform vec3 uFogColor;
+out vec4 frag;
+void main() {
+  vec3 n = normalize(vNormal);
+  float diff = max(dot(n, uSunDir), 0.0);
+  vec3 col = vColor * (0.34 + 0.78 * diff);
+  float d = length(vWorld - uCamPos);
+  float fog = 1.0 - exp(-d * d * 6e-9);
+  frag = vec4(mix(col, uFogColor, fog), 1.0);
+}`;
+
+export const OCEAN_VS = `#version 300 es
+precision highp float;
+in vec3 aPos;
+uniform mat4 uViewProj;
+uniform float uTime;
+out vec3 vWorld;
+out vec3 vNormal;
+// Procedural Gerstner-ish sine waves. Height h(x,z,t) and analytic gradient g(x,z,t).
+// 3 crossing wave trains, total amplitude ~2.1 m.
+void main() {
+  vec2 p = aPos.xz;
+  float a = p.x * 0.012 + uTime * 1.10;
+  float b = dot(p, vec2(0.009, 0.011)) - uTime * 0.90;
+  float c = dot(p, vec2(-0.017, 0.006)) + uTime * 1.70;
+  float h = sin(a) * 0.9 + sin(b) * 0.7 + sin(c) * 0.5;
+  vec2 g = cos(a) * 0.9 * 0.012 * vec2(1.0, 0.0)
+         + cos(b) * 0.7 * vec2(0.009, 0.011)
+         + cos(c) * 0.5 * vec2(-0.017, 0.006);
+  vec3 pos = vec3(aPos.x, aPos.y + h, aPos.z);
+  vNormal = normalize(vec3(-g.x, 1.0, -g.y));
+  vWorld = pos;
+  gl_Position = uViewProj * vec4(pos, 1.0);
+}`;
+
+export const OCEAN_FS = `#version 300 es
+precision highp float;
+in vec3 vWorld;
+in vec3 vNormal;
+uniform vec3 uSunDir;
+uniform vec3 uCamPos;
+uniform vec3 uFogColor;
+out vec4 frag;
+void main() {
+  vec3 n = normalize(vNormal);
+  vec3 v = normalize(uCamPos - vWorld);
+  float fres = pow(1.0 - max(dot(n, v), 0.0), 3.0);
+  vec3 deep = vec3(0.016, 0.086, 0.150);
+  vec3 shallow = vec3(0.05, 0.22, 0.30);
+  vec3 col = mix(deep, shallow, fres * 0.65);
+  vec3 hv = normalize(uSunDir + v);
+  float spec = pow(max(dot(n, hv), 0.0), 220.0);
+  col += vec3(1.0, 0.95, 0.82) * spec * 1.4;
+  float d = length(vWorld - uCamPos);
+  float fog = 1.0 - exp(-d * d * 6e-9);
+  frag = vec4(mix(col, uFogColor, fog), 1.0);
+}`;
+
+export const JET_VS = `#version 300 es
+precision highp float;
+in vec3 aPos;
+in vec3 aNormal;
+in vec3 aColor;
+uniform mat4 uViewProj;
+uniform mat4 uModel;
+out vec3 vNormal;
+out vec3 vColor;
+out vec3 vWorld;
+void main() {
+  vec4 wp = uModel * vec4(aPos, 1.0);
+  vWorld = wp.xyz;
+  vNormal = mat3(uModel) * aNormal;
+  vColor = aColor;
+  gl_Position = uViewProj * wp;
+}`;
+
+export const JET_FS = `#version 300 es
+precision highp float;
+in vec3 vNormal;
+in vec3 vColor;
+in vec3 vWorld;
+uniform vec3 uSunDir;
+uniform vec3 uCamPos;
+uniform vec3 uFogColor;
+out vec4 frag;
+void main() {
+  vec3 n = normalize(vNormal);
+  float diff = max(dot(n, uSunDir), 0.0);
+  // cool ambient from sky, warm from sun
+  vec3 amb = vColor * vec3(0.16, 0.20, 0.27);
+  vec3 col = amb + vColor * diff * vec3(1.05, 1.0, 0.92);
+  float d = length(vWorld - uCamPos);
+  float fog = 1.0 - exp(-d * d * 6e-9);
+  frag = vec4(mix(col, uFogColor, fog), 1.0);
+}`;
+
+export const SKY_VS = `#version 300 es
+precision highp float;
+// Fullscreen triangle from gl_VertexID, no vertex buffers needed (WebGL2).
+out vec2 vNdc;
+const vec2 K[3] = vec2[3](vec2(-1.0, -1.0), vec2(3.0, -1.0), vec2(-1.0, 3.0));
+void main() {
+  vNdc = K[gl_VertexID];
+  gl_Position = vec4(K[gl_VertexID], 1.0, 1.0);
+}`;
+
+export const SKY_FS = `#version 300 es
+precision highp float;
+in vec2 vNdc;
+uniform mat4 uInvVP;
+uniform vec3 uCamPos;
+uniform vec3 uSunDir;
+out vec4 frag;
+void main() {
+  vec4 pw = uInvVP * vec4(vNdc, 1.0, 1.0);
+  vec3 dir = normalize(pw.xyz / pw.w - uCamPos);
+  float up = clamp(dir.y * 1.6 + 0.10, 0.0, 1.0);
+  vec3 horizon = vec3(0.76, 0.84, 0.90);
+  vec3 zenith = vec3(0.20, 0.44, 0.76);
+  vec3 col = mix(horizon, zenith, up);
+  float s = dot(dir, uSunDir);
+  float glow = pow(max(s, 0.0), 320.0) * 0.55;
+  float disc = smoothstep(0.99955, 0.99988, s);
+  col += vec3(1.0, 0.92, 0.75) * glow;
+  col = mix(col, vec3(1.0, 0.97, 0.88), disc);
+  frag = vec4(col, 1.0);
+}`;

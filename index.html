@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SKYBURN - Phase 0 Foundation</title>
+<style>
+  html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #0a0e14; }
+  #gl { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+  #hud {
+    position: absolute; inset: 0; pointer-events: none;
+    font-family: Consolas, 'Courier New', monospace;
+    color: #cfe8ff; font-size: 13px; line-height: 1.45;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+  }
+  #prof { position: absolute; top: 10px; left: 12px; }
+  #jetinfo { position: absolute; top: 10px; right: 14px; text-align: right; }
+  #help {
+    position: absolute; bottom: 10px; left: 12px; font-size: 12px; color: #9db8d2;
+  }
+  #inv { margin-top: 4px; }
+  #err {
+    position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%);
+    background: #3a1111; color: #ffd7d7; border: 1px solid #a33;
+    padding: 18px 26px; font-family: Consolas, monospace; font-size: 15px;
+    max-width: 80%;
+  }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<div id="err" hidden></div>
+<div id="hud">
+  <div id="prof">
+    <div id="hud-fps">FPS --</div>
+    <div id="hud-ms">frame -- ms</div>
+    <div id="hud-pms">physics -- ms</div>
+    <div id="hud-hz">physics -- Hz</div>
+    <div id="hud-lat">input latency -- ms</div>
+    <div id="hud-scale">res scale --</div>
+    <div id="hud-heap">heap --</div>
+    <div id="hud-inv">invariants OK</div>
+  </div>
+  <div id="jetinfo">
+    <div id="hud-jet">SKYBURN</div>
+    <div id="hud-spd">speed --</div>
+    <div id="hud-alt">alt --</div>
+    <div id="hud-thr">throttle --</div>
+  </div>
+  <div id="help">
+    SKYBURN Phase 0 | Mouse = steer | W/S or wheel = throttle | Space = afterburner | Shift = airbrake |
+    Left click = guns | Right click hold/release = lock/missile | F = flare | G = weapon | R/E = target |
+    C/M = camera | [ ] = resolution scale | Gamepad supported (left stick steer, LB/RB throttle, RT guns)
+  </div>
+</div>
+<script>window.__SKYBURN_DEV__ = true;</script>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>

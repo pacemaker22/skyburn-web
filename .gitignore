@@ -1,0 +1,8 @@
+# Build output
+dist/
+# Local scratch artifacts
+_*.txt
+_*.py
+__pycache__/
+node_modules/
+*.log

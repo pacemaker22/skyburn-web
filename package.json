@@ -1,0 +1,14 @@
+{
+  "name": "skyburn-web",
+  "version": "1.0.0",
+  "description": "Fighter Jet game that runs on your browser.",
+  "type": "module",
+  "main": "src/main.js",
+  "scripts": {
+    "test": "node --expose-gc --test tests/",
+    "start": "python -m http.server 8080",
+    "build": "python build.py"
+  },
+  "author": "Artik Nurochman",
+  "license": "ISC"
+}
