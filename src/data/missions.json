@@ -1,0 +1,147 @@
+{
+  "missions": [
+    {
+      "id": "m1",
+      "title": "First Flight",
+      "map": "ocean",
+      "tier": 0,
+      "reward": 200,
+      "unlocks": "m2",
+      "briefing": "Welcome to VFA-101, Rookie. Two target drones are up over the range - take them down (guns: hold LEFT mouse; missile: hold RIGHT mouse to lock, release to fire). Then fly the recon circuit low and slow to finish your checkride.",
+      "stages": [
+        {
+          "id": "s1",
+          "type": "air_to_air",
+          "waves": [
+            { "at": 0, "units": [ { "kind": "jet", "group": "drones", "zone": "droneA", "count": 2, "hp": 45, "missiles": 0, "jet": "mig29", "difficulty": 0 } ] }
+          ],
+          "objectives": [
+            { "id": "o1", "label": "Destroy training drones", "type": "air_to_air", "groups": ["drones"], "count": 2, "timer": 300 }
+          ]
+        },
+        {
+          "id": "s2",
+          "type": "recon",
+          "waves": [],
+          "objectives": [
+            { "id": "o2", "label": "Fly the recon circuit", "type": "recon", "waypoints": ["wpA1", "wpA2", "wpA3"], "altMin": 120, "radius": 700, "timer": 420 }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "m2",
+      "title": "Coastal Patrol",
+      "map": "coast",
+      "tier": 0,
+      "reward": 300,
+      "unlocks": "m3",
+      "briefing": "Recon the southern coastline - hostile engineering crews were sighted inland. Fly the patrol route, then roll in and destroy all three SAM sites before they go operational.",
+      "stages": [
+        {
+          "id": "s1",
+          "type": "recon",
+          "waves": [],
+          "objectives": [
+            { "id": "o1", "label": "Patrol the coast", "type": "recon", "waypoints": ["wpC1", "wpC2", "wpC3"], "altMin": 150, "radius": 800, "timer": 360 }
+          ]
+        },
+        {
+          "id": "s2",
+          "type": "ground",
+          "waves": [
+            { "at": 0, "units": [ { "kind": "ground", "group": "sams", "zone": "samRow", "count": 3, "hp": 60, "variant": 4 } ] }
+          ],
+          "objectives": [
+            { "id": "o2", "label": "Destroy SAM sites", "type": "ground", "groups": ["sams"], "count": 3, "timer": 360 }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "m3",
+      "title": "Oil Rig Defense",
+      "map": "rig",
+      "tier": 1,
+      "reward": 450,
+      "unlocks": "m4",
+      "briefing": "Missile boats are converging on rig Kestrel-4. Sink them before the platform is lost - if you wander off, the rig WILL die. Watch for the cruise missile warning; that means Kestrel-4 is under fire.",
+      "assets": [
+        { "kind": "rig", "group": "rig", "zone": "rigPos", "hp": 150, "radius": 45 }
+      ],
+      "stages": [
+        {
+          "id": "s1",
+          "type": "naval",
+          "waves": [
+            { "at": 0, "units": [
+              { "kind": "ship", "group": "boats", "zone": "boatA", "count": 1, "hp": 120, "cruise": { "targetGroup": "rig", "firstAt": 16, "every": 45 } },
+              { "kind": "ship", "group": "boats", "zone": "boatB", "count": 1, "hp": 120, "cruise": { "targetGroup": "rig", "firstAt": 38, "every": 45 } }
+            ] }
+          ],
+          "objectives": [
+            { "id": "o1", "label": "Protect rig Kestrel-4", "type": "escort", "groups": ["rig"], "holdTime": 150 },
+            { "id": "o2", "label": "Sink missile boats", "type": "naval", "groups": ["boats"], "count": 2, "timer": 300 }
+          ]
+        },
+        {
+          "id": "s2",
+          "type": "air_to_air",
+          "waves": [
+            { "at": 0, "units": [ { "kind": "jet", "group": "cap", "zone": "capA", "count": 2, "difficulty": 1 } ] },
+            { "at": 25, "units": [ { "kind": "jet", "group": "cap", "zone": "capB", "count": 2, "difficulty": 1 } ] }
+          ],
+          "objectives": [
+            { "id": "o3", "label": "Destroy the strike group", "type": "air_to_air", "groups": ["cap"], "count": 4, "timer": 300 }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "m4",
+      "title": "Island Strike",
+      "map": "island",
+      "tier": 1,
+      "reward": 600,
+      "unlocks": null,
+      "briefing": "Full strike package, Sainte-Marie island. Blind their early warning radar first - the flight line is defended until it falls. Then sink the patrol boats and sweep the CAP. Check your flares.",
+      "stages": [
+        {
+          "id": "s1",
+          "type": "ground",
+          "waves": [
+            { "at": 0, "units": [
+              { "kind": "ground", "group": "radar", "zone": "strikeRow", "count": 1, "hp": 50, "variant": 6 },
+              { "kind": "ground", "group": "flightline", "zone": "strikeRow", "count": 3, "hp": 60, "variant": 5 }
+            ] }
+          ],
+          "objectives": [
+            { "id": "o1", "label": "Destroy the early warning radar", "type": "ground", "groups": ["radar"], "count": 1, "timer": 240 },
+            { "id": "o2", "label": "Destroy the flight line", "type": "ground", "groups": ["flightline"], "count": 3, "timer": 240, "deps": ["o1"] }
+          ]
+        },
+        {
+          "id": "s2",
+          "type": "naval",
+          "waves": [
+            { "at": 0, "units": [ { "kind": "ship", "group": "boats", "zone": "boatA", "count": 2, "hp": 110 } ] }
+          ],
+          "objectives": [
+            { "id": "o3", "label": "Sink patrol boats", "type": "naval", "groups": ["boats"], "count": 2, "timer": 300 }
+          ]
+        },
+        {
+          "id": "s3",
+          "type": "air_to_air",
+          "waves": [
+            { "at": 0, "units": [ { "kind": "jet", "group": "cap", "zone": "capA", "count": 3, "difficulty": 1 } ] },
+            { "at": 30, "units": [ { "kind": "jet", "group": "cap", "zone": "capB", "count": 2, "difficulty": 2 } ] }
+          ],
+          "objectives": [
+            { "id": "o4", "label": "Eliminate the CAP", "type": "air_to_air", "groups": ["cap"], "count": 5, "timer": 360 }
+          ]
+        }
+      ]
+    }
+  ]
+}

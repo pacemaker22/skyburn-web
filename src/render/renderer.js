@@ -268,6 +268,17 @@ export class Renderer {
     this._carrier = this._uploadInterleaved(mesh.verts, mesh.idx, this.gl.UNSIGNED_SHORT, mesh.stride);
   }
 
+  // Phase 2: ship meshes by variant index [0]=missile boat (ents.variant 2), [1]=oil rig (3).
+  setShipMeshes(meshes) {
+    this._shipMeshes = meshes.map(
+      (m) => this._uploadInterleaved(m.verts, m.idx, this.gl.UNSIGNED_SHORT, m.stride));
+  }
+
+  // Phase 2: one shared ground-unit mesh (SAM / hangar / radar silhouettes).
+  setGroundMesh(mesh) {
+    this._ground = this._uploadInterleaved(mesh.verts, mesh.idx, this.gl.UNSIGNED_SHORT, mesh.stride);
+  }
+
   // Phase 1: particle pool binding - one dynamic VBO holding the system's staging layout
   // [x,y,z,size,r,g,b,alpha] (8 floats/point). Updated per frame with bufferSubData(srcOffset,
   // length) - no view allocation, no re-upload of unused tail.
@@ -399,6 +410,45 @@ export class Renderer {
       gl.bindVertexArray(null);
       this.drawCalls++;
       this.triangles += this._carrier.idxCount / 3;
+    }
+
+    // --- Phase 2: ships (boats, rig) and ground units, drawn with the jet program ---
+    if (this._shipMeshes && scene.shipCount > 0) {
+      const j = this._progJet;
+      gl.useProgram(j.prog);
+      for (let i = 0; i < scene.shipCount; i++) {
+        const mesh = this._shipMeshes[scene.shipKind[i]] || this._shipMeshes[0];
+        mat4FromYPR(this._model, scene.shipRot[i], 0, 0,
+          scene.shipPos[i * 3], scene.shipPos[i * 3 + 1], scene.shipPos[i * 3 + 2]);
+        gl.bindVertexArray(mesh.vao);
+        gl.uniformMatrix4fv(j.u.uViewProj, false, this._viewProj);
+        gl.uniformMatrix4fv(j.u.uModel, false, this._model);
+        gl.uniform3f(j.u.uSunDir, SUN_DIR[0], SUN_DIR[1], SUN_DIR[2]);
+        gl.uniform3f(j.u.uCamPos, camPos[0], camPos[1], camPos[2]);
+        gl.uniform3f(j.u.uFogColor, FOG_COLOR[0], FOG_COLOR[1], FOG_COLOR[2]);
+        gl.drawElements(gl.TRIANGLES, mesh.idxCount, gl.UNSIGNED_SHORT, 0);
+        this.drawCalls++;
+        this.triangles += mesh.idxCount / 3;
+      }
+      gl.bindVertexArray(null);
+    }
+    if (this._ground && scene.groundCount > 0) {
+      const j = this._progJet;
+      gl.useProgram(j.prog);
+      for (let i = 0; i < scene.groundCount; i++) {
+        mat4FromYPR(this._model, scene.groundRot[i], 0, 0,
+          scene.groundPos[i * 3], scene.groundPos[i * 3 + 1], scene.groundPos[i * 3 + 2]);
+        gl.bindVertexArray(this._ground.vao);
+        gl.uniformMatrix4fv(j.u.uViewProj, false, this._viewProj);
+        gl.uniformMatrix4fv(j.u.uModel, false, this._model);
+        gl.uniform3f(j.u.uSunDir, SUN_DIR[0], SUN_DIR[1], SUN_DIR[2]);
+        gl.uniform3f(j.u.uCamPos, camPos[0], camPos[1], camPos[2]);
+        gl.uniform3f(j.u.uFogColor, FOG_COLOR[0], FOG_COLOR[1], FOG_COLOR[2]);
+        gl.drawElements(gl.TRIANGLES, this._ground.idxCount, gl.UNSIGNED_SHORT, 0);
+        this.drawCalls++;
+        this.triangles += this._ground.idxCount / 3;
+      }
+      gl.bindVertexArray(null);
     }
 
     // --- jets with 3 LODs picked by distance (PRD Task 0.6, now for every aircraft) ---
@@ -583,3 +633,50 @@ export function buildJetLod(level) {
     stride: 9,
   };
 }
+
+// ---- Phase 2 mission meshes (original procedural geometry, same pushBox conventions) ----
+
+// Missile boat (ents.variant 2): hull, deckhouse, mast, aft missile launcher.
+export function buildShipLod() {
+  const out = { verts: [], idx: [], vertCount: 0 };
+  const HULL = [0.26, 0.28, 0.31], DECK = [0.36, 0.39, 0.42],
+    TOWER = [0.44, 0.47, 0.51], DARK = [0.15, 0.16, 0.18];
+  pushBox(out, 0, 1.4, 0, 7.5, 2.8, 34, 0, HULL);          // hull
+  pushBox(out, 0, 3.4, 2, 6.2, 1.2, 22, 0, DECK);          // main deck
+  pushBox(out, 0, 5.6, 6, 4.4, 3.2, 7, 0, TOWER);          // deckhouse
+  pushBox(out, 0, 9.4, 6, 0.7, 3.4, 0.7, 0, DARK);         // mast
+  pushBox(out, 0, 4.6, -11, 3.4, 1.6, 5.5, 0, DARK);       // launcher block
+  pushBox(out, 0, 6.1, -11, 1.9, 1.4, 3.6, -0.35, DARK);   // raised launcher rails
+  return { verts: new Float32Array(out.verts), idx: new Uint16Array(out.idx), stride: 9 };
+}
+
+// Offshore oil rig (ents.variant 3): four legs, cellar deck, modules, derrick, helipad.
+export function buildRigLod() {
+  const out = { verts: [], idx: [], vertCount: 0 };
+  const LEG = [0.32, 0.30, 0.27], DECK = [0.42, 0.45, 0.48],
+    MOD = [0.55, 0.50, 0.38], DERRICK = [0.30, 0.32, 0.35], PAD = [0.58, 0.60, 0.62];
+  const lx = 30, lz = 30;
+  for (let i = 0; i < 4; i++) {
+    const x = (i & 1) ? lx : -lx, z = (i & 2) ? lz : -lz;
+    pushBox(out, x, 11, z, 7, 26, 7, 0, LEG);              // legs (hull interval not modeled)
+  }
+  pushBox(out, 0, 26, 0, 78, 5, 78, 0, DECK);              // cellar deck
+  pushBox(out, -18, 31, -16, 22, 8, 20, 0, MOD);           // living quarters module
+  pushBox(out, 16, 30, 14, 18, 6, 16, 0, MOD);             // process module
+  pushBox(out, 8, 46, -12, 8, 34, 8, 0, DERRICK);          // derrick tower
+  pushBox(out, 8, 65, -12, 3, 3, 3, 0, DERRICK);           // crown block
+  pushBox(out, 26, 30.5, -22, 24, 1.4, 24, 0, PAD);        // helipad
+  return { verts: new Float32Array(out.verts), idx: new Uint16Array(out.idx), stride: 9 };
+}
+
+// Ground unit silhouette (ents.variant 4-6): bunker slab, radar mast, angled SAM rack.
+export function buildGroundLod() {
+  const out = { verts: [], idx: [], vertCount: 0 };
+  const BASE = [0.35, 0.34, 0.30], MAST = [0.24, 0.25, 0.27], RACK = [0.52, 0.42, 0.22];
+  pushBox(out, 0, 1.1, 0, 11, 2.2, 11, 0, BASE);           // bunker base
+  pushBox(out, -3, 4.6, -3, 0.8, 5.5, 0.8, 0, MAST);       // radar mast
+  pushBox(out, -3, 7.6, -3, 4.2, 0.6, 1.1, 0, MAST);       // radar panel
+  pushBox(out, 2.5, 3.1, 2.5, 5.5, 1.5, 2.2, -0.5, RACK);  // angled missile rack
+  return { verts: new Float32Array(out.verts), idx: new Uint16Array(out.idx), stride: 9 };
+}
+

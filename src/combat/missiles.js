@@ -132,7 +132,7 @@ export class MissileSystem {
   _detonate(slot) {
     if (this.hooks.onExplode) {
       this.hooks.onExplode(this.pos[slot * 3], this.pos[slot * 3 + 1], this.pos[slot * 3 + 2],
-        this.owner[slot]);
+        this.owner[slot], this.targetId[slot]);
     }
     this.explodeTimer[slot] = 0.05; // brief EXPLODE state before recycle
   }

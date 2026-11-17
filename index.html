@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SKYBURN - Phase 1 Core Combat</title>
+<title>SKYBURN - Phase 2 Missions</title>
 <style>
   html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #0a0e14; }
   #gl { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
@@ -50,6 +50,58 @@
     padding: 18px 26px; font-family: Consolas, monospace; font-size: 15px;
     max-width: 80%;
   }
+  /* ---- Phase 2: HUD v2 widgets + screen overlays (menu/hangar/briefing/debrief) ---- */
+  #hud-objectives {
+    position: absolute; top: 10px; left: 290px; max-width: 460px;
+    color: #cfe8ff; font-size: 13px;
+  }
+  #hud-obj-title { color: #ffd54f; letter-spacing: 1px; margin-bottom: 2px; }
+  .hud-obj-line { margin: 1px 0; }
+  #hud-protected {
+    position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
+    display: none; color: #cfe8ff; font-size: 12px; text-align: center;
+  }
+  #hud-protected-bar {
+    display: block; width: 220px; height: 7px; background: #10202c;
+    border: 1px solid #2e5a72; margin: 3px auto 0;
+  }
+  #hud-protected-fill { display: block; height: 100%; width: 100%; background: #7fd67f; }
+  #hud-cruise {
+    position: absolute; top: 9%; left: 50%; transform: translateX(-50%);
+    display: none; color: #ff5252; font-size: 17px; letter-spacing: 2px;
+    text-shadow: 0 0 8px rgba(255, 60, 60, 0.7);
+  }
+  .skyburn-screen {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    background: rgba(4, 8, 14, 0.82); pointer-events: auto; z-index: 10;
+  }
+  .sb-panel {
+    width: min(680px, 92vw); max-height: 88vh; overflow: auto;
+    background: #0d1520; border: 1px solid #2e5a72; border-radius: 6px;
+    padding: 26px 30px; color: #cfe8ff;
+    font-family: Consolas, 'Courier New', monospace;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+  }
+  .sb-kicker { color: #6fb1e8; font-size: 12px; letter-spacing: 3px; margin-bottom: 6px; }
+  .sb-panel h1 { margin: 0 0 8px; font-size: 26px; color: #ffd54f; letter-spacing: 1px; }
+  .sb-meta { color: #9db8d2; font-size: 13px; margin: 4px 0; }
+  .sb-text { color: #cfe8ff; font-size: 14px; line-height: 1.5; margin: 10px 0; }
+  .sb-sub { color: #6fb1e8; font-size: 12px; letter-spacing: 2px; margin: 14px 0 4px; }
+  .sb-list { margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.7; }
+  .sb-row { margin-top: 18px; display: flex; gap: 12px; }
+  .sb-btn {
+    font-family: inherit; font-size: 14px; letter-spacing: 1px;
+    background: #14222f; color: #cfe8ff; border: 1px solid #2e5a72;
+    padding: 9px 22px; border-radius: 4px; cursor: pointer;
+  }
+  .sb-btn:hover { background: #1d3145; }
+  .sb-btn.primary { border-color: #ffd54f; color: #ffd54f; }
+  .sb-btn.primary:hover { background: #2a2410; }
+  .sb-verdict { font-size: 20px; letter-spacing: 2px; margin: 6px 0 10px; }
+  .sb-menu-list { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
+  .sb-menu-list .sb-btn { text-align: left; }
+  .sb-menu-list .sb-btn small { color: #9db8d2; float: right; margin-left: 18px; }
+  .sb-menu-list .sb-btn.locked { opacity: 0.45; cursor: not-allowed; }
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -85,10 +137,10 @@
   <div id="hud-target"></div>
   <div id="hud-banner" hidden></div>
   <div id="help">
-    SKYBURN Phase 1 | Mouse = steer | W/S or wheel = throttle | Space = afterburner | Shift = airbrake |
+    SKYBURN Phase 2 | Mouse = steer | W/S or wheel = throttle | Space = afterburner | Shift = airbrake |
     Left click hold = guns | Right click HOLD to lock, RELEASE to fire missile | F = flare |
-    R/E = target next/nearest | Land on the carrier deck slow (&lt;180 kn) with gear, then hold W to catapult |
-    [ ] = resolution scale | Gamepad supported (left stick steer, LB/RB throttle, RT guns, A missile)
+    R/E = target next/nearest | [ ] = resolution scale | Gamepad supported |
+    Objectives top-center | Kestrel-4 rig HP bottom-center | watch the cruise missile warning
   </div>
 </div>
 <script>window.__SKYBURN_DEV__ = true;</script>

@@ -286,8 +286,10 @@ src/data/jets/weapons/missions/maps, src/verify/invariants, verify/*.tla, tests/
 
 - [x] PLAN.md created from source of truth
 - [x] Phase 0 - Foundation (PASS: 24/24 tests green, dist 0.05 MB < 2 MB, headless boot check clean; tag v0.1)
-- [ ] Phase 1 - Core Combat (blocked until user says "continue")
-- [ ] Phase 2 - Missions
+- [x] Phase 1 - Core Combat (PASS: 58/58 tests green, dogfight + carrier ops; commit 32f9d3d, tag v0.2)
+- [x] Phase 2 - Missions (PASS: 83/83 tests green; missions M1-M4, objective DAG, spawner,
+      checkpoints, briefing/debrief, HUD v2, cruise missiles + protected rig AC < 3 min)
 - [ ] Phase 3 - Content
 - [ ] Phase 4 - Verification + Polish
 - [ ] Phase 5 - Ship
+

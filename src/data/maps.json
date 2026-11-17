@@ -1,0 +1,50 @@
+{
+  "maps": {
+    "ocean": {
+      "id": "ocean",
+      "description": "Open water training range around the island chain",
+      "points": {
+        "playerStart": { "x": 0, "z": 14000, "y": 800 },
+        "droneA": { "x": -3000, "z": -6000, "y": 900, "spread": 1200 },
+        "wpA1": { "x": 0, "z": 9000 },
+        "wpA2": { "x": -6500, "z": 2000 },
+        "wpA3": { "x": -8000, "z": -6000 }
+      }
+    },
+    "coast": {
+      "id": "coast",
+      "description": "Southern coastline patrol sector",
+      "points": {
+        "playerStart": { "x": 9000, "z": 9000, "y": 900 },
+        "wpC1": { "x": 5000, "z": 5000 },
+        "wpC2": { "x": 1500, "z": -2000 },
+        "wpC3": { "x": -3500, "z": -4500 },
+        "samRow": { "x": -2000, "z": -3500, "spread": 900 }
+      }
+    },
+    "rig": {
+      "id": "rig",
+      "description": "Kestrel-4 offshore oil platform sector",
+      "points": {
+        "playerStart": { "x": -6000, "z": -6000, "y": 1000 },
+        "rigPos": { "x": 5200, "z": 5400 },
+        "boatA": { "x": 8200, "z": 2400 },
+        "boatB": { "x": 2600, "z": 8300 },
+        "capA": { "x": 6800, "z": 6800, "y": 1100, "spread": 800 },
+        "capB": { "x": 3600, "z": 4000, "y": 1200, "spread": 800 }
+      }
+    },
+    "island": {
+      "id": "island",
+      "description": "Sainte-Marie island strike complex",
+      "points": {
+        "playerStart": { "x": 9500, "z": -8000, "y": 1000 },
+        "strikeRow": { "x": -900, "z": -1300, "spread": 800 },
+        "boatA": { "x": 1200, "z": 6900, "spread": 600 },
+        "boatB": { "x": -1900, "z": 7300, "spread": 600 },
+        "capA": { "x": 5200, "z": -4200, "y": 1200, "spread": 800 },
+        "capB": { "x": 1000, "z": 1500, "y": 1000, "spread": 800 }
+      }
+    }
+  }
+}
