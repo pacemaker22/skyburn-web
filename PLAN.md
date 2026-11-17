@@ -290,6 +290,10 @@ src/data/jets/weapons/missions/maps, src/verify/invariants, verify/*.tla, tests/
 - [x] Phase 2 - Missions (PASS: 83/83 tests green; missions M1-M4, objective DAG, spawner,
       checkpoints, briefing/debrief, HUD v2, cruise missiles + protected rig AC < 3 min)
 - [ ] Phase 3 - Content
+      - [x] 3A Jets + Hangar (PASS: 94/94 tests green; 42-jet roster + weapons.json,
+            kitbash 7 shape families x 3 LODs, armor/loadout balance, hangar grid +
+            stats + compare + credit unlocks; commit a86fd42)
+      - [ ] 3B Maps + Missions 5-14 + Ace bonuses + balancing + audio
 - [ ] Phase 4 - Verification + Polish
 - [ ] Phase 5 - Ship
 

@@ -1,0 +1,18 @@
+{
+  "weapons": [
+    { "id": "gun20", "name": "20mm Vulcan", "type": "gun", "guidance": "none",
+      "damage": 12, "rpm": 600, "range": 2600, "flareResist": 0 },
+    { "id": "gun30", "name": "30mm Avenger", "type": "gun", "guidance": "none",
+      "damage": 30, "rpm": 600, "range": 2200, "flareResist": 0 },
+    { "id": "aim9x", "name": "AIM-9X Sidewinder", "type": "missile", "guidance": "ir",
+      "damage": 70, "rpm": 0, "range": 3500, "lockTime": 1.1, "flareResist": 0.40 },
+    { "id": "r73", "name": "R-73 Archer", "type": "missile", "guidance": "ir",
+      "damage": 72, "rpm": 0, "range": 3600, "lockTime": 1.1, "flareResist": 0.45 },
+    { "id": "aim120", "name": "AIM-120 AMRAAM", "type": "missile", "guidance": "radar",
+      "damage": 95, "rpm": 0, "range": 8000, "lockTime": 1.6, "flareResist": 0.90 },
+    { "id": "r77", "name": "R-77 Adder", "type": "missile", "guidance": "radar",
+      "damage": 90, "rpm": 0, "range": 7500, "lockTime": 1.6, "flareResist": 0.85 },
+    { "id": "r33", "name": "R-33 Amos", "type": "missile", "guidance": "radar",
+      "damage": 110, "rpm": 0, "range": 12000, "lockTime": 2.0, "flareResist": 0.95 }
+  ]
+}

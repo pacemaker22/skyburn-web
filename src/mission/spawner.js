@@ -197,6 +197,8 @@ export class Spawner {
     e.missilesLeft[id] = spec.missiles !== undefined ? spec.missiles : 4;
     e.flareCount[id] = jetData.flareCount;
     e.speed[id] = f.speed;
+    e.armor[id] = jetData.armor || 1;               // Task 3A.3 balance armor
+    e.variant[id] = jetData._shapeIdx !== undefined ? jetData._shapeIdx : 0; // kitbash shape
     this._seed = (this._seed + 0x9E37) | 0;
     const ai = new EnemyAI(e, this.missiles, id, { id: this.playerId },
       spec.difficulty !== undefined ? spec.difficulty : this.difficulty, this._seed, {});

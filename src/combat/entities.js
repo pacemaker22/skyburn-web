@@ -33,7 +33,9 @@ export class WorldEntities {
     this.flareCount = new Uint16Array(this.max);
     this.missilesLeft = new Uint8Array(this.max);
     this.variant = new Uint8Array(this.max);       // mesh variant for the renderer (Phase 2):
+                                                   // jets: kitbash shape index (Phase 3A);
                                                    // ships: 2 boat, 3 rig; ground: 4 SAM, 5 hangar, 6 radar
+    this.armor = new Float32Array(this.max);       // damage divisor (Task 3A.3: A-10 2.0 etc.)
   }
 
   // Spawn into the first free slot. Returns the slot id, or -1 when full (pool cap respected;
@@ -59,6 +61,7 @@ export class WorldEntities {
     this.health[i] = health; this.maxHealth[i] = health;
     this.speed[i] = 0; this.gearDown[i] = 0; this.flareCount[i] = 0; this.missilesLeft[i] = 0;
     this.variant[i] = 0;
+    this.armor[i] = 1;
     if (i + 1 > this.count) this.count = i + 1;
   }
 
@@ -68,9 +71,10 @@ export class WorldEntities {
   }
 
   // Returns true if the hit killed the entity (health reached 0 exactly this call).
+  // armor divides incoming damage (Task 3A.3 balance: A-10 2.0x, Su-25 1.8x, default 1.0).
   damage(id, amount) {
     if (!this.alive[id]) return false;
-    this.health[id] -= amount;
+    this.health[id] -= amount / (this.armor[id] || 1);
     if (this.health[id] <= 0) {
       this.health[id] = 0;
       this.kill(id);

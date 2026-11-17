@@ -103,6 +103,53 @@
   .sb-menu-list .sb-btn small { color: #9db8d2; float: right; margin-left: 18px; }
   .sb-menu-list .sb-btn.locked { opacity: 0.45; cursor: not-allowed; }
   [hidden] { display: none !important; }
+
+  /* ---- Phase 3A: hangar (Task 3A.4) - grid, stat bars, compare table ---- */
+  .sb-hangar { width: min(980px, 96vw); }
+  .sb-hangar-grid { display: flex; gap: 14px; align-items: stretch; margin-top: 8px; }
+  .sb-hangar-list {
+    flex: 1.2; min-width: 0; max-height: 56vh; overflow: auto;
+    display: flex; flex-direction: column; gap: 3px; padding-right: 4px;
+  }
+  .sb-tier-head {
+    font-size: 10px; letter-spacing: 2px; color: #6fa8c9;
+    margin: 8px 0 3px; border-bottom: 1px solid #1c3a4c; padding-bottom: 2px;
+  }
+  .sb-jet-card {
+    display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+    background: #101c29; color: #d7e6f2; border: 1px solid #1c3a4c; border-radius: 4px;
+    padding: 5px 8px; font: inherit; cursor: pointer;
+  }
+  .sb-jet-card:hover { border-color: #3f7ba0; }
+  .sb-jet-card.selected { border-color: #ffb84d; background: #1a2634; }
+  .sb-jet-card.locked { opacity: 0.55; }
+  .hg-dot { width: 10px; height: 10px; border-radius: 50%; flex: 0 0 auto;
+    border: 1px solid rgba(255,255,255,0.25); }
+  .hg-name { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hg-meta { margin-left: auto; font-size: 10px; color: #7f97a8; white-space: nowrap; }
+  .sb-hangar-detail {
+    flex: 1; min-width: 0; max-height: 56vh; overflow: auto;
+    border-left: 1px solid #1c3a4c; padding-left: 14px;
+  }
+  .sb-hangar-jetname { font-size: 17px; font-weight: 700; color: #eaf4fb; margin-bottom: 2px; }
+  .sb-stats { margin: 8px 0; display: flex; flex-direction: column; gap: 4px; }
+  .sb-stat { display: flex; align-items: center; gap: 8px; font-size: 11px; }
+  .sb-stat > span { width: 70px; color: #7f97a8; flex: 0 0 auto; }
+  .sb-stat > em { width: 76px; text-align: right; font-style: normal; color: #d7e6f2; flex: 0 0 auto; }
+  .sb-statbar { flex: 1; height: 6px; background: #101c29; border: 1px solid #1c3a4c;
+    border-radius: 3px; overflow: hidden; }
+  .sb-statbar > div { height: 100%; background: linear-gradient(90deg, #2e7ea8, #7fd4ff); }
+  .sb-tag.owned { display: inline-block; margin-top: 8px; padding: 3px 10px;
+    border: 1px solid #3f8f5f; color: #8fe0ae; border-radius: 3px; font-size: 11px;
+    letter-spacing: 1px; }
+  .sb-dim { color: #5f7484; font-size: 10px; }
+  .sb-compare { margin-top: 10px; border-top: 1px solid #1c3a4c; padding-top: 6px; }
+  .sb-cmp { width: 100%; border-collapse: collapse; font-size: 11px; }
+  .sb-cmp th { color: #9fc3da; font-size: 11px; padding: 2px 4px; text-align: center; }
+  .sb-cmp td { padding: 2px 4px; color: #b8cad8; border-top: 1px solid #10202c; }
+  .sb-cmp td:nth-child(2) { color: #6fa8c9; text-align: center; }
+  .sb-cmp td.win { color: #8fe0ae; font-weight: 700; }
+  .sb-cmp td:nth-child(1) { text-align: right; } .sb-cmp td:nth-child(3) { text-align: left; }
 </style>
 </head>
 <body>

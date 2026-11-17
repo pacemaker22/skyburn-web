@@ -10,8 +10,9 @@ import { InputSystem, ACTION } from './core/input.js';
 import { AudioSystem } from './core/audio.js';
 import { SaveSystem } from './core/save.js';
 import {
-  Renderer, buildJetLod, buildShipLod, buildRigLod, buildGroundLod,
+  Renderer, buildShipLod, buildRigLod, buildGroundLod,
 } from './render/renderer.js';
+import { buildJetKitLod, SHAPE_IDS, shapeIndexFor } from './render/models.js';
 import { Terrain } from './world/terrain.js';
 import { Ocean } from './world/ocean.js';
 import { Carrier, CARRIER_TUNING } from './world/carrier.js';
@@ -30,6 +31,7 @@ import { Mission, MISSION_STATE } from './mission/mission.js';
 import { BriefingScreen } from './ui/briefing.js';
 import { DebriefScreen } from './ui/debrief.js';
 import { MissionHud } from './ui/hud.js';
+import { HangarScreen, creditsForRun } from './ui/hangar.js';
 import { initVec3 } from './wasm/vec3.js';
 import {
   assertFinite3, assertSpeedCapped, assertActiveCount, getViolationCount,
@@ -116,12 +118,13 @@ async function boot() {
   // Task 0.7: WASM vec3 stub (falls back to JS with the same API when no toolchain artifact)
   initVec3().catch(() => {});
 
-  let jets, missionsData, mapsData;
+  let jets, missionsData, mapsData, weaponsData;
   try {
-    [jets, missionsData, mapsData] = await Promise.all([
+    [jets, missionsData, mapsData, weaponsData] = await Promise.all([
       loadJSON('./src/data/jets.json'),
       loadJSON('./src/data/missions.json'),
       loadJSON('./src/data/maps.json'),
+      loadJSON('./src/data/weapons.json'),
     ]);
   } catch (e) {
     showError('Failed to load game data: ' + e.message);
@@ -130,6 +133,10 @@ async function boot() {
   const jetList = Array.isArray(jets) ? jets : jets.jets;
   const missions = missionsData.missions;
   const maps = mapsData.maps;
+  const weapons = weaponsData.weapons;
+  // Task 3A.4: weapon id -> display name for hangar loadout labels.
+  const weaponNames = {};
+  for (const w of weapons) weaponNames[w.id] = w.name;
 
   let renderer;
   try {
@@ -143,7 +150,10 @@ async function boot() {
   const ocean = new Ocean({});
   renderer.setTerrain(terrain.buildMesh());
   renderer.setOcean(ocean.buildMesh());
-  renderer.setJetLods([buildJetLod(0), buildJetLod(1), buildJetLod(2)]);
+  // Task 3A.2 kitbash: one LOD set per shape family; ents.variant keys the renderer.
+  for (const j of jetList) j._shapeIdx = shapeIndexFor(j);
+  renderer.setJetLodSets(SHAPE_IDS.map((shape) => [0, 1, 2].map(
+    (level) => buildJetKitLod({ shape }, level))));
   renderer.setCarrier(new Carrier({}).buildMesh());
   renderer.setShipMeshes([buildShipLod(), buildRigLod()]);
   renderer.setGroundMesh(buildGroundLod());
@@ -217,6 +227,8 @@ async function boot() {
           if (unlock && saveData.unlocked.indexOf(unlock) < 0) saveData.unlocked.push(unlock);
           saveData.checkpoint = null; // mission won: no resume checkpoint
         }
+        // Task 3A.4 economy: credits from reward + score (win) or score slice (loss)
+        saveData.credits = (saveData.credits || 0) + creditsForRun(pendingLaunch.missionDef, res);
         saveData.difficulty = world.difficulty;
         void persistSave(); // Task 2.6: save IndexedDB after debrief
       }
@@ -254,9 +266,11 @@ async function boot() {
     const playerId = ents.spawn(ENT_TYPE.JET, TEAM.PLAYER,
       playerFlight.pos[0], playerFlight.pos[1], playerFlight.pos[2],
       playerFlight.rot[0], playerFlight.rot[1], 0, 9, 100);
-    ents.missilesLeft[playerId] = 6;
+    ents.missilesLeft[playerId] = playerData.hardpoints > 0 ? 6 : 0; // SR-71: unarmed recon
     ents.flareCount[playerId] = playerData.flareCount;
     ents.speed[playerId] = playerFlight.speed;
+    ents.armor[playerId] = playerData.armor || 1;      // Task 3A.3
+    ents.variant[playerId] = playerData._shapeIdx !== undefined ? playerData._shapeIdx : 0;
 
     // carrier: free flight only (Phase 1 landing gameplay); missions use a stub so the
     // shared helpers (deckAt etc.) stay allocation-free without branching
@@ -376,6 +390,8 @@ async function boot() {
         ents.missilesLeft[id] = 4;
         ents.flareCount[id] = enemyData.flareCount;
         ents.speed[id] = f.speed;
+        ents.armor[id] = enemyData.armor || 1;
+        ents.variant[id] = enemyData._shapeIdx !== undefined ? enemyData._shapeIdx : 0;
         enemyIds.push(id);
         enemyFlight.push(f);
         const ai = new EnemyAI(ents, null, id, { id: playerId }, worldDifficulty, 0xBEEF + i, {});
@@ -928,6 +944,7 @@ async function boot() {
       jetPos: new Float32Array((SPAWNER_JET_CAP + 1) * 3),
       jetRot: new Float32Array((SPAWNER_JET_CAP + 1) * 3),
       jetDist: new Float32Array(SPAWNER_JET_CAP + 1),
+      jetKind: new Uint8Array(SPAWNER_JET_CAP + 1), // kitbash shape set per jet (Task 3A.2)
       carrierX: 0, carrierY: 0, carrierZ: 0, carrierYaw: 0,
       shipCount: 0,
       shipPos: new Float32Array(MAX_SHIPS * 3),
@@ -1063,6 +1080,7 @@ async function boot() {
         scene.jetPos[n * 3 + 2] = rPos[2];
         scene.jetRot[n * 3] = rRot[0]; scene.jetRot[n * 3 + 1] = rRot[1];
         scene.jetRot[n * 3 + 2] = rRot[2];
+        scene.jetKind[n] = ents.variant[playerId];
         n++;
       }
       for (let i = 0; i < N_ENEMY; i++) {
@@ -1080,6 +1098,7 @@ async function boot() {
           if (d < -Math.PI) d += Math.PI * 2;
           scene.jetRot[n * 3 + a] = ra + d * alpha;
         }
+        scene.jetKind[n] = ents.variant[eid];
         n++;
       }
       scene.jetCount = n;
@@ -1226,8 +1245,8 @@ async function boot() {
     };
   }
 
-  // ---- menu + hangar screens (functional Phase 2 versions; visual polish in Phase 3) ----
-  let selectedJet = pickJet(jetList, 'f16c');
+  // ---- menu + hangar screens (Task 3A.4: hangar is a grid + stats + compare + credits) ----
+  let selectedJet = jetList.find((j) => jetOwnedSave(j)) || jetList[0];
   const menuEl = document.createElement('div');
   menuEl.id = 'screen-menu';
   menuEl.className = 'skyburn-screen';
@@ -1303,39 +1322,26 @@ async function boot() {
   function menuShow() { menuEl.hidden = false; refreshMenu(); }
   function menuHide() { menuEl.hidden = true; }
 
-  const hangarEl = document.createElement('div');
-  hangarEl.id = 'screen-hangar';
-  hangarEl.className = 'skyburn-screen';
-  hangarEl.hidden = true;
-  document.body.appendChild(hangarEl);
-
-  function hangarShow() {
-    hangarEl.innerHTML =
-      '<div class="sb-panel">' +
-      '<div class="sb-kicker">HANGAR</div>' +
-      '<h1>SELECT AIRCRAFT</h1>' +
-      '<div class="sb-menu-list" id="hangar-list"></div>' +
-      '<div class="sb-row"><button id="hangar-back" class="sb-btn">BACK</button></div>' +
-      '</div>';
-    const list = hangarEl.querySelector('#hangar-list');
-    for (const j of jetList) {
-      const btn = document.createElement('button');
-      btn.className = 'sb-btn' + (j === selectedJet ? ' primary' : '');
-      btn.innerHTML = j.name + '<small>' + j.id + ' | tier ' + j.tier +
-        ' | ' + j.maxSpeed + ' km/h top | radar ' + j.radarRange + ' m</small>';
-      btn.addEventListener('click', () => {
-        selectedJet = j;
-        if (pendingLaunch) pendingLaunch.jetData = j;
-        fireGame(GAME_EVENT.PICK);
-      });
-      list.appendChild(btn);
-    }
-    hangarEl.querySelector('#hangar-back').addEventListener('click', () => {
-      fireGame(GAME_EVENT.BACK);
-    });
-    hangarEl.hidden = false;
+  const hangar = new HangarScreen(document, {
+    jets: jetList,
+    weaponNames,
+    getSave: () => saveData,
+    onSelect: (jet) => {
+      selectedJet = jet;
+      if (pendingLaunch) pendingLaunch.jetData = jet;
+      fireGame(GAME_EVENT.PICK);
+    },
+    onBuy: () => { void persistSave(); },
+    onBuyFail: (reason) => {
+      audio.beep(reason === 'insufficient-credits' ? 180 : 240, 0.15, 0.2);
+    },
+    onBack: () => fireGame(GAME_EVENT.BACK),
+  });
+  function jetOwnedSave(jet) {
+    return saveData.ownedJets && saveData.ownedJets.indexOf(jet.id) >= 0;
   }
-  function hangarHide() { hangarEl.hidden = true; }
+  function hangarShow() { hangar.show(selectedJet); }
+  function hangarHide() { hangar.hide(); }
 
   // ---- attract camera behind the menus (slow ocean orbit, no sim) ----
   const attractCamPos = new Float32Array([7000, 1800, 0]);

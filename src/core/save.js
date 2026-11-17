@@ -16,6 +16,8 @@ export function defaultSaveData() {
     unlocked: ['m1'],              // mission ids the player may launch
     results: {},                   // missionId -> { success, score, timeSec, kills }
     checkpoint: null,              // { missionId, stageIndex, difficulty, timeSec, player {...} }
+    credits: 1500,                 // Task 3A.4: earned from debrief, spent on jets
+    ownedJets: ['f16c', 'mig29'],  // Task 3A.4: jets the hangar may select (starter pair)
     settings: {},                  // reserved (Phase 5: volume, colorblind, remap)
   };
 }
@@ -32,6 +34,8 @@ export function mergeSave(loaded) {
     out.results = Object.assign({}, loaded.results);
   }
   if (loaded.checkpoint && typeof loaded.checkpoint === 'object') out.checkpoint = loaded.checkpoint;
+  if (typeof loaded.credits === 'number' && isFinite(loaded.credits)) out.credits = loaded.credits;
+  if (Array.isArray(loaded.ownedJets)) out.ownedJets = loaded.ownedJets.slice();
   if (loaded.settings && typeof loaded.settings === 'object') out.settings = loaded.settings;
   return out;
 }

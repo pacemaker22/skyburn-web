@@ -165,7 +165,7 @@ test('seeded PRNG is deterministic', () => {
 test('jets.json matches the Appendix B schema with F-16C + MiG-29', () => {
   const data = JSON.parse(readFileSync(join(ROOT, 'src/data/jets.json'), 'utf-8'));
   assert.ok(Array.isArray(data.jets));
-  assert.equal(data.jets.length, 2, 'Phase 0: exactly 2 jets');
+  assert.ok(data.jets.length >= 40, 'Phase 3A: 40+ jets, got ' + data.jets.length);
   const FIELDS = ['id', 'name', 'country', 'tier', 'thrust', 'drag', 'maxSpeed', 'turnRate',
     'stallSpeed', 'radarRange', 'stealthFactor', 'hardpoints', 'gunDamage', 'flareCount', 'price'];
   const f16 = data.jets.find((j) => j.id === 'f16c');

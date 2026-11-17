@@ -175,7 +175,7 @@ export class Renderer {
 
     this._terrain = null; // {vao, idxCount}
     this._ocean = null;
-    this._jetLods = null; // [ {vao, idxCount}, ... ]
+    this._jetLodSets = null; // Phase 3A: [ [lod0, lod1, lod2] per shape family ]
     this._carrier = null; // Phase 1: {vao, idxCount}
     this._particles = null; // Phase 1: {vao, vbo, max}
     this._lines = null;     // Phase 1: {vao, vbo, maxVerts}
@@ -259,9 +259,14 @@ export class Renderer {
 
   setTerrain(mesh) { this._terrain = this._uploadInterleaved(mesh.verts, mesh.idx, this.gl.UNSIGNED_INT, mesh.stride); }
   setOcean(mesh) { this._ocean = this._uploadPositions(mesh.verts, mesh.idx); }
-  setJetLods(meshes) {
-    this._jetLods = meshes.map((m) => this._uploadInterleaved(m.verts, m.idx, this.gl.UNSIGNED_SHORT, m.stride));
+  // Phase 3A: jet LOD sets keyed by ents.variant (one set per shape family).
+  // sets = [ [lod0, lod1, lod2] per shape ]; scene.jetKind[i] selects the set.
+  setJetLodSets(sets) {
+    this._jetLodSets = sets.map((set) => set.map(
+      (m) => this._uploadInterleaved(m.verts, m.idx, this.gl.UNSIGNED_SHORT, m.stride)));
   }
+  // Phase 0/1 single-set API kept as a wrapper (set 0).
+  setJetLods(meshes) { this.setJetLodSets([meshes]); }
 
   // Phase 1: static carrier mesh (same interleaved layout as jets).
   setCarrier(mesh) {
@@ -451,15 +456,16 @@ export class Renderer {
       gl.bindVertexArray(null);
     }
 
-    // --- jets with 3 LODs picked by distance (PRD Task 0.6, now for every aircraft) ---
-    if (this._jetLods) {
+    // --- jets with per-shape LOD sets picked by variant + distance (Tasks 0.6 + 3A.2) ---
+    if (this._jetLodSets) {
       const j = this._progJet;
       gl.useProgram(j.prog);
       const n = scene.jetCount;
       for (let i = 0; i < n; i++) {
         const d = scene.jetDist[i];
         const lod = d < 1200 ? 0 : (d < 3500 ? 1 : 2);
-        const mesh = this._jetLods[lod] || this._jetLods[0];
+        const set = this._jetLodSets[scene.jetKind ? scene.jetKind[i] : 0] || this._jetLodSets[0];
+        const mesh = set[lod] || set[0];
         mat4FromYPR(this._model, scene.jetRot[i * 3], scene.jetRot[i * 3 + 1],
           scene.jetRot[i * 3 + 2], scene.jetPos[i * 3], scene.jetPos[i * 3 + 1], scene.jetPos[i * 3 + 2]);
         gl.bindVertexArray(mesh.vao);
