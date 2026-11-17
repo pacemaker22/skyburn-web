@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SKYBURN - Phase 0 Foundation</title>
+<title>SKYBURN - Phase 1 Core Combat</title>
 <style>
   html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #0a0e14; }
   #gl { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
@@ -15,6 +15,31 @@
   }
   #prof { position: absolute; top: 10px; left: 12px; }
   #jetinfo { position: absolute; top: 10px; right: 14px; text-align: right; }
+  #combat { position: absolute; top: 10px; right: 14px; text-align: right; }
+  #hpbar { width: 160px; height: 6px; background: #10202c; border: 1px solid #2e5a72;
+           margin: 3px 0 6px auto; }
+  #hud-hp-bar { display: block; height: 100%; width: 100%; background: #7fd67f; }
+  #hud-map { position: absolute; bottom: 42px; right: 14px; border: 1px solid #2e5a72;
+             border-radius: 4px; }
+  #crosshair {
+    position: absolute; left: 50%; top: 50%; width: 26px; height: 26px;
+    transform: translate(-50%, -50%); pointer-events: none;
+  }
+  #crosshair::before, #crosshair::after {
+    content: ''; position: absolute; background: #cfe8ff; opacity: 0.85;
+  }
+  #crosshair::before { left: 12px; top: 0; width: 2px; height: 26px; }
+  #crosshair::after { left: 0; top: 12px; width: 26px; height: 2px; }
+  #hud-target {
+    position: absolute; width: 28px; height: 28px; border: 2px solid #ff8a65;
+    border-radius: 3px; display: none; pointer-events: none;
+    box-shadow: 0 0 6px rgba(0,0,0,0.6);
+  }
+  #hud-banner {
+    position: absolute; top: 18%; left: 50%; transform: translateX(-50%);
+    font-size: 22px; color: #ffd54f; text-shadow: 0 2px 6px rgba(0,0,0,0.9);
+    letter-spacing: 2px; text-align: center;
+  }
   #help {
     position: absolute; bottom: 10px; left: 12px; font-size: 12px; color: #9db8d2;
   }
@@ -48,10 +73,22 @@
     <div id="hud-alt">alt --</div>
     <div id="hud-thr">throttle --</div>
   </div>
+  <div id="combat">
+    <div id="hud-hp">health --</div>
+    <span id="hpbar"><span id="hud-hp-bar"></span></span>
+    <div id="hud-msl">missiles --</div>
+    <div id="hud-lock">lock --</div>
+    <div id="hud-state"></div>
+  </div>
+  <canvas id="hud-map" width="164" height="164"></canvas>
+  <div id="crosshair"></div>
+  <div id="hud-target"></div>
+  <div id="hud-banner" hidden></div>
   <div id="help">
-    SKYBURN Phase 0 | Mouse = steer | W/S or wheel = throttle | Space = afterburner | Shift = airbrake |
-    Left click = guns | Right click hold/release = lock/missile | F = flare | G = weapon | R/E = target |
-    C/M = camera | [ ] = resolution scale | Gamepad supported (left stick steer, LB/RB throttle, RT guns)
+    SKYBURN Phase 1 | Mouse = steer | W/S or wheel = throttle | Space = afterburner | Shift = airbrake |
+    Left click hold = guns | Right click HOLD to lock, RELEASE to fire missile | F = flare |
+    R/E = target next/nearest | Land on the carrier deck slow (&lt;180 kn) with gear, then hold W to catapult |
+    [ ] = resolution scale | Gamepad supported (left stick steer, LB/RB throttle, RT guns, A missile)
   </div>
 </div>
 <script>window.__SKYBURN_DEV__ = true;</script>

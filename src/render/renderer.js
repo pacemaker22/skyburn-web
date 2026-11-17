@@ -4,6 +4,7 @@
 
 import {
   TERRAIN_VS, TERRAIN_FS, OCEAN_VS, OCEAN_FS, JET_VS, JET_FS, SKY_VS, SKY_FS,
+  PARTICLE_VS, PARTICLE_FS, LINE_VS, LINE_FS,
 } from './shaders/basic.glsl.js';
 
 // ---- Column-major mat4 helpers (exported for unit tests; all out-param, no allocation) ----
@@ -150,6 +151,8 @@ export class Renderer {
     this._progOcean = this._compile(OCEAN_VS, OCEAN_FS);
     this._progJet = this._compile(JET_VS, JET_FS);
     this._progSky = this._compile(SKY_VS, SKY_FS);
+    this._progParticles = this._compile(PARTICLE_VS, PARTICLE_FS); // Phase 1
+    this._progLine = this._compile(LINE_VS, LINE_FS);              // Phase 1 (tracers)
 
     // normalize sun dir
     const s = SUN_DIR;
@@ -173,6 +176,9 @@ export class Renderer {
     this._terrain = null; // {vao, idxCount}
     this._ocean = null;
     this._jetLods = null; // [ {vao, idxCount}, ... ]
+    this._carrier = null; // Phase 1: {vao, idxCount}
+    this._particles = null; // Phase 1: {vao, vbo, max}
+    this._lines = null;     // Phase 1: {vao, vbo, maxVerts}
   }
 
   _compile(vsSrc, fsSrc) {
@@ -257,6 +263,50 @@ export class Renderer {
     this._jetLods = meshes.map((m) => this._uploadInterleaved(m.verts, m.idx, this.gl.UNSIGNED_SHORT, m.stride));
   }
 
+  // Phase 1: static carrier mesh (same interleaved layout as jets).
+  setCarrier(mesh) {
+    this._carrier = this._uploadInterleaved(mesh.verts, mesh.idx, this.gl.UNSIGNED_SHORT, mesh.stride);
+  }
+
+  // Phase 1: particle pool binding - one dynamic VBO holding the system's staging layout
+  // [x,y,z,size,r,g,b,alpha] (8 floats/point). Updated per frame with bufferSubData(srcOffset,
+  // length) - no view allocation, no re-upload of unused tail.
+  setParticles(ps) {
+    const gl = this.gl;
+    const vao = gl.createVertexArray();
+    gl.bindVertexArray(vao);
+    const vbo = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+    gl.bufferData(gl.ARRAY_BUFFER, ps.staging.byteLength, gl.DYNAMIC_DRAW);
+    const strideB = 32;
+    gl.enableVertexAttribArray(0); // aPos
+    gl.vertexAttribPointer(0, 3, gl.FLOAT, false, strideB, 0);
+    gl.enableVertexAttribArray(1); // aSize
+    gl.vertexAttribPointer(1, 1, gl.FLOAT, false, strideB, 12);
+    gl.enableVertexAttribArray(2); // aColor
+    gl.vertexAttribPointer(2, 3, gl.FLOAT, false, strideB, 16);
+    gl.enableVertexAttribArray(3); // aAlpha
+    gl.vertexAttribPointer(3, 1, gl.FLOAT, false, strideB, 28);
+    gl.bindVertexArray(null);
+    this._particles = { vao, vbo, max: ps.max, sys: ps };
+  }
+
+  // Phase 1: tracer line pool capacity (7 floats per vertex: x,y,z,r,g,b,a).
+  setLineCapacity(maxVerts) {
+    const gl = this.gl;
+    const vao = gl.createVertexArray();
+    gl.bindVertexArray(vao);
+    const vbo = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+    gl.bufferData(gl.ARRAY_BUFFER, maxVerts * 7 * 4, gl.DYNAMIC_DRAW);
+    gl.enableVertexAttribArray(0); // aPos
+    gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 28, 0);
+    gl.enableVertexAttribArray(1); // aColor
+    gl.vertexAttribPointer(1, 4, gl.FLOAT, false, 28, 12);
+    gl.bindVertexArray(null);
+    this._lines = { vao, vbo, maxVerts };
+  }
+
   // Resize handling with devicePixelRatio scaling + dynamic resolution (PRD Task 0.4).
   resize(cssWidth, cssHeight, dpr) {
     this.dpr = dpr || (typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1);
@@ -274,8 +324,10 @@ export class Renderer {
     this.renderScale = Math.min(1, Math.max(0.4, s));
   }
 
-  // One frame: sky -> terrain -> ocean -> jet. Matrices passed in from main (no allocation here).
-  drawFrame(camPos, camTarget, fovyRad, jetPos, jetYaw, jetPitch, jetRoll, jetDist, timeSec) {
+  // One frame: sky -> terrain -> ocean -> carrier -> jets -> particles -> tracers.
+  // scene = preallocated view: { jetCount, jetPos F32(3N), jetRot F32(3N), jetDist F32(N),
+  // carrierX, carrierY, carrierZ, carrierYaw }. Matrices/flows as Phase 0 (no allocation here).
+  drawFrame(camPos, camTarget, fovyRad, scene, timeSec) {
     const gl = this.gl;
     this.drawCalls = 0;
     this.triangles = 0;
@@ -332,24 +384,117 @@ export class Renderer {
       this.triangles += this._ocean.idxCount / 3;
     }
 
-    // --- jet with 3 LODs picked by distance (PRD Task 0.6) ---
-    if (this._jetLods) {
-      const lod = jetDist < 1200 ? 0 : (jetDist < 3500 ? 1 : 2);
-      const mesh = this._jetLods[lod] || this._jetLods[0];
-      mat4FromYPR(this._model, jetYaw, jetPitch, jetRoll, jetPos[0], jetPos[1], jetPos[2]);
+    // --- carrier Nemesis (Task 1.7): yaw-only model matrix, drawn with the jet program ---
+    if (this._carrier) {
+      mat4FromYPR(this._model, scene.carrierYaw, 0, 0, scene.carrierX, scene.carrierY, scene.carrierZ);
       const j = this._progJet;
       gl.useProgram(j.prog);
-      gl.bindVertexArray(mesh.vao);
+      gl.bindVertexArray(this._carrier.vao);
       gl.uniformMatrix4fv(j.u.uViewProj, false, this._viewProj);
       gl.uniformMatrix4fv(j.u.uModel, false, this._model);
       gl.uniform3f(j.u.uSunDir, SUN_DIR[0], SUN_DIR[1], SUN_DIR[2]);
       gl.uniform3f(j.u.uCamPos, camPos[0], camPos[1], camPos[2]);
       gl.uniform3f(j.u.uFogColor, FOG_COLOR[0], FOG_COLOR[1], FOG_COLOR[2]);
-      gl.drawElements(gl.TRIANGLES, mesh.idxCount, gl.UNSIGNED_SHORT, 0);
+      gl.drawElements(gl.TRIANGLES, this._carrier.idxCount, gl.UNSIGNED_SHORT, 0);
       gl.bindVertexArray(null);
       this.drawCalls++;
-      this.triangles += mesh.idxCount / 3;
+      this.triangles += this._carrier.idxCount / 3;
     }
+
+    // --- jets with 3 LODs picked by distance (PRD Task 0.6, now for every aircraft) ---
+    if (this._jetLods) {
+      const j = this._progJet;
+      gl.useProgram(j.prog);
+      const n = scene.jetCount;
+      for (let i = 0; i < n; i++) {
+        const d = scene.jetDist[i];
+        const lod = d < 1200 ? 0 : (d < 3500 ? 1 : 2);
+        const mesh = this._jetLods[lod] || this._jetLods[0];
+        mat4FromYPR(this._model, scene.jetRot[i * 3], scene.jetRot[i * 3 + 1],
+          scene.jetRot[i * 3 + 2], scene.jetPos[i * 3], scene.jetPos[i * 3 + 1], scene.jetPos[i * 3 + 2]);
+        gl.bindVertexArray(mesh.vao);
+        gl.uniformMatrix4fv(j.u.uViewProj, false, this._viewProj);
+        gl.uniformMatrix4fv(j.u.uModel, false, this._model);
+        gl.uniform3f(j.u.uSunDir, SUN_DIR[0], SUN_DIR[1], SUN_DIR[2]);
+        gl.uniform3f(j.u.uCamPos, camPos[0], camPos[1], camPos[2]);
+        gl.uniform3f(j.u.uFogColor, FOG_COLOR[0], FOG_COLOR[1], FOG_COLOR[2]);
+        gl.drawElements(gl.TRIANGLES, mesh.idxCount, gl.UNSIGNED_SHORT, 0);
+        this.drawCalls++;
+        this.triangles += mesh.idxCount / 3;
+      }
+      gl.bindVertexArray(null);
+    }
+    // --- particles (Task 1.8): one VBO, two blend ranges (alpha kinds, then additive) ---
+    if (this._particles) {
+      const ps = this._particles.sys;
+      const count = ps.stage();
+      if (count > 0) {
+        const gl2 = this.gl;
+        gl2.useProgram(this._progParticles.prog);
+        const p = this._progParticles;
+        gl2.uniformMatrix4fv(p.u.uViewProj, false, this._viewProj);
+        gl2.uniform1f(p.u.uPointScale, (this.canvas.height || 1) / (2 * Math.tan(fovyRad / 2)));
+        gl2.bindVertexArray(this._particles.vao);
+        gl2.bindBuffer(gl2.ARRAY_BUFFER, this._particles.vbo);
+        gl2.bufferSubData(gl2.ARRAY_BUFFER, 0, ps.staging, 0, count * 8);
+        gl2.depthMask(false);
+        gl2.enable(gl2.BLEND);
+        const nA = ps.stagedAlphaCount;
+        if (nA > 0) {
+          gl2.blendFunc(gl2.SRC_ALPHA, gl2.ONE_MINUS_SRC_ALPHA);
+          gl2.uniform1f(p.u.uSoft, 1.0);
+          gl2.drawArrays(gl2.POINTS, 0, nA);
+        }
+        if (count > nA) {
+          gl2.blendFunc(gl2.SRC_ALPHA, gl2.ONE);
+          gl2.uniform1f(p.u.uSoft, 0.0);
+          gl2.drawArrays(gl2.POINTS, nA, count - nA);
+        }
+        gl2.disable(gl2.BLEND);
+        gl2.depthMask(true);
+        gl2.bindVertexArray(null);
+        this.drawCalls += nA > 0 ? 2 : 1;
+      }
+    }
+  }
+
+  // Tracer lines (Task 1.3): main stages [x,y,z,r,g,b,a] * 2 verts per tracer; LINES draw.
+  drawTracers(data, vertCount) {
+    if (!this._lines || vertCount <= 0) return;
+    const gl = this.gl;
+    gl.useProgram(this._progLine.prog);
+    const l = this._progLine;
+    gl.uniformMatrix4fv(l.u.uViewProj, false, this._viewProj);
+    gl.bindVertexArray(this._lines.vao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this._lines.vbo);
+    gl.bufferSubData(gl.ARRAY_BUFFER, 0, data, 0, vertCount * 7);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+    gl.depthMask(false);
+    gl.drawArrays(gl.LINES, 0, vertCount);
+    gl.depthMask(true);
+    gl.disable(gl.BLEND);
+    gl.bindVertexArray(null);
+    this.drawCalls++;
+  }
+
+  // World -> CSS pixel coordinates for HUD target boxes (Task 1.9). Writes into out
+  // [cssX, cssY, inFront(0/1)]. Uses this frame's viewProj; call after drawFrame began
+  // (viewProj is rebuilt at the start of drawFrame). Zero allocation.
+  project(out, camPos, x, y, z) {
+    const m = this._viewProj;
+    const w = m[3] * x + m[7] * y + m[11] * z + m[15];
+    if (w <= 0.0001) { out[2] = 0; return out; }
+    const cx = (m[0] * x + m[4] * y + m[8] * z + m[12]) / w;
+    const cy = (m[1] * x + m[5] * y + m[9] * z + m[13]) / w;
+    const rect = this.canvas.getBoundingClientRect ? this.canvas.getBoundingClientRect() : null;
+    const cw = rect ? rect.width : (this.canvas.width || 1);
+    const ch = rect ? rect.height : (this.canvas.height || 1);
+    out[0] = (cx * 0.5 + 0.5) * cw;
+    out[1] = (1 - (cy * 0.5 + 0.5)) * ch;
+    out[2] = 1;
+    void camPos;
+    return out;
   }
 }
 

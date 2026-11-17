@@ -152,3 +152,57 @@ void main() {
   col = mix(col, vec3(1.0, 0.97, 0.88), disc);
   frag = vec4(col, 1.0);
 }`;
+
+// ---- Phase 1: GPU particles (gl.POINTS round sprites) + tracer lines ----
+
+export const PARTICLE_VS = `#version 300 es
+precision highp float;
+in vec3 aPos;
+in float aSize;
+in vec3 aColor;
+in float aAlpha;
+uniform mat4 uViewProj;
+uniform float uPointScale;   // viewport height / 2 / tan(fov/2)
+out vec3 vColor;
+out float vAlpha;
+void main() {
+  vec4 clip = uViewProj * vec4(aPos, 1.0);
+  gl_Position = clip;
+  float w = max(clip.w, 0.1);
+  gl_PointSize = clamp(aSize * uPointScale / w, 1.0, 220.0);
+  vColor = aColor;
+  vAlpha = aAlpha;
+}`;
+
+export const PARTICLE_FS = `#version 300 es
+precision highp float;
+in vec3 vColor;
+in float vAlpha;
+uniform float uSoft;   // 1.0 = soft smoke disc, 0.0 = hard bright core
+out vec4 frag;
+void main() {
+  vec2 d = gl_PointCoord - vec2(0.5);
+  float r2 = dot(d, d) * 4.0;              // 0 center -> 1 at edge
+  if (r2 > 1.0) discard;
+  float soft = mix(1.0, 1.0 - smoothstep(0.15, 1.0, r2), uSoft);
+  frag = vec4(vColor, vAlpha * soft);
+}`;
+
+export const LINE_VS = `#version 300 es
+precision highp float;
+in vec3 aPos;
+in vec4 aColor;   // rgb + alpha (tracers fade along the segment)
+uniform mat4 uViewProj;
+out vec4 vColor;
+void main() {
+  gl_Position = uViewProj * vec4(aPos, 1.0);
+  vColor = aColor;
+}`;
+
+export const LINE_FS = `#version 300 es
+precision highp float;
+in vec4 vColor;
+out vec4 frag;
+void main() {
+  frag = vColor;
+}`;
