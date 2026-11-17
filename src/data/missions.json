@@ -7,6 +7,11 @@
       "tier": 0,
       "reward": 200,
       "unlocks": "m2",
+      "aceBonus": [
+        { "id": "b1", "desc": "Two or more kills", "condition": "min_kills:2" },
+        { "id": "b2", "desc": "Finish under 10 minutes", "condition": "under_time:600" },
+        { "id": "b3", "desc": "Never take a hit", "condition": "no_damage_taken" }
+      ],
       "briefing": "Welcome to VFA-101, Rookie. Two target drones are up over the range - take them down (guns: hold LEFT mouse; missile: hold RIGHT mouse to lock, release to fire). Then fly the recon circuit low and slow to finish your checkride.",
       "stages": [
         {
@@ -36,6 +41,11 @@
       "tier": 0,
       "reward": 300,
       "unlocks": "m3",
+      "aceBonus": [
+        { "id": "b1", "desc": "Three or more kills", "condition": "min_kills:3" },
+        { "id": "b2", "desc": "Finish under 10 minutes", "condition": "under_time:600" },
+        { "id": "b3", "desc": "Never take a hit", "condition": "no_damage_taken" }
+      ],
       "briefing": "Recon the southern coastline - hostile engineering crews were sighted inland. Fly the patrol route, then roll in and destroy all three SAM sites before they go operational.",
       "stages": [
         {
@@ -65,6 +75,11 @@
       "tier": 1,
       "reward": 450,
       "unlocks": "m4",
+      "aceBonus": [
+        { "id": "b1", "desc": "Six or more kills", "condition": "min_kills:6" },
+        { "id": "b2", "desc": "Finish under 9.5 minutes", "condition": "under_time:570" },
+        { "id": "b3", "desc": "Never take a hit", "condition": "no_damage_taken" }
+      ],
       "briefing": "Missile boats are converging on rig Kestrel-4. Sink them before the platform is lost - if you wander off, the rig WILL die. Watch for the cruise missile warning; that means Kestrel-4 is under fire.",
       "assets": [
         { "kind": "rig", "group": "rig", "zone": "rigPos", "hp": 150, "radius": 45 }
@@ -103,7 +118,12 @@
       "map": "island",
       "tier": 1,
       "reward": 600,
-      "unlocks": null,
+      "unlocks": "m5",
+      "aceBonus": [
+        { "id": "b1", "desc": "Eleven or more kills", "condition": "min_kills:11" },
+        { "id": "b2", "desc": "Finish under 15 minutes", "condition": "under_time:900" },
+        { "id": "b3", "desc": "Never take a hit", "condition": "no_damage_taken" }
+      ],
       "briefing": "Full strike package, Sainte-Marie island. Blind their early warning radar first - the flight line is defended until it falls. Then sink the patrol boats and sweep the CAP. Check your flares.",
       "stages": [
         {
@@ -139,6 +159,455 @@
           ],
           "objectives": [
             { "id": "o4", "label": "Eliminate the CAP", "type": "air_to_air", "groups": ["cap"], "count": 5, "timer": 360 }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "m5",
+      "title": "Canyon Run",
+      "map": "desert",
+      "tier": 1,
+      "reward": 700,
+      "unlocks": "m6",
+      "briefing": "Recon the canyon complex low, then roll in on the AAA nests and their supply depot. Enemy CAP is based off the far mesa - expect a warm reception on egress.",
+      "aceBonus": [
+        { "id": "b1", "desc": "No missiles - guns only", "condition": "no_missile_fired" },
+        { "id": "b2", "desc": "Six or more kills", "condition": "min_kills:6" },
+        { "id": "b3", "desc": "Finish under 9 minutes", "condition": "under_time:540" }
+      ],
+      "stages": [
+        {
+          "id": "s1",
+          "type": "recon",
+          "waves": [],
+          "objectives": [
+            { "id": "o1", "label": "Recon the canyon route", "type": "recon", "waypoints": ["wpD1", "wpD2", "wpD3"], "altMin": 150, "radius": 800, "timer": 300 }
+          ]
+        },
+        {
+          "id": "s2",
+          "type": "ground",
+          "waves": [
+            { "at": 0, "units": [
+              { "kind": "ground", "group": "guns", "zone": "canyonRow", "count": 3, "hp": 60, "variant": 4 },
+              { "kind": "ground", "group": "depot", "zone": "depotRow", "count": 2, "hp": 60, "variant": 5 }
+            ] },
+            { "at": 25, "units": [ { "kind": "jet", "group": "cap", "zone": "capA", "count": 2, "difficulty": 1 } ] }
+          ],
+          "objectives": [
+            { "id": "o2", "label": "Destroy the canyon guns", "type": "ground", "groups": ["guns"], "count": 3, "timer": 300 },
+            { "id": "o3", "label": "Destroy the supply depot", "type": "ground", "groups": ["depot"], "count": 2, "timer": 300 },
+            { "id": "o4", "label": "Eliminate the CAP", "type": "air_to_air", "groups": ["cap"], "count": 2, "timer": 330, "deps": ["o2", "o3"] }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "m6",
+      "title": "Harbor Blitz",
+      "map": "city",
+      "tier": 2,
+      "reward": 800,
+      "unlocks": "m7",
+      "briefing": "The harbor flotilla is regrouping for a strike on our convoys. Sink it at the pier, blind the coastal SAM ring, then sweep the interceptors off the skyline.",
+      "aceBonus": [
+        { "id": "b1", "desc": "Eight or more kills", "condition": "min_kills:8" },
+        { "id": "b2", "desc": "Finish under 15 minutes", "condition": "under_time:900" },
+        { "id": "b3", "desc": "Never take a hit", "condition": "no_damage_taken" }
+      ],
+      "stages": [
+        {
+          "id": "s1",
+          "type": "naval",
+          "waves": [
+            { "at": 0, "units": [ { "kind": "ship", "group": "boats", "zone": "harborRow", "count": 3, "hp": 110 } ] }
+          ],
+          "objectives": [
+            { "id": "o1", "label": "Sink the harbor flotilla", "type": "naval", "groups": ["boats"], "count": 3, "timer": 300 }
+          ]
+        },
+        {
+          "id": "s2",
+          "type": "ground",
+          "waves": [
+            { "at": 0, "units": [
+              { "kind": "ground", "group": "sams", "zone": "samRow", "count": 3, "hp": 60, "variant": 4 },
+              { "kind": "ground", "group": "radar", "zone": "radarRow", "count": 1, "hp": 50, "variant": 6 }
+            ] }
+          ],
+          "objectives": [
+            { "id": "o2", "label": "Destroy the early warning radar", "type": "ground", "groups": ["radar"], "count": 1, "timer": 240 },
+            { "id": "o3", "label": "Destroy the SAM ring", "type": "ground", "groups": ["sams"], "count": 3, "timer": 300, "deps": ["o2"] }
+          ]
+        },
+        {
+          "id": "s3",
+          "type": "air_to_air",
+          "waves": [
+            { "at": 0, "units": [ { "kind": "jet", "group": "cap", "zone": "capA", "count": 2, "difficulty": 1 } ] },
+            { "at": 25, "units": [ { "kind": "jet", "group": "cap", "zone": "capB", "count": 2, "difficulty": 2 } ] }
+          ],
+          "objectives": [
+            { "id": "o4", "label": "Sweep the interceptors", "type": "air_to_air", "groups": ["cap"], "count": 4, "timer": 330 }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "m7",
+      "title": "Convoy Escort",
+      "map": "arctic",
+      "tier": 2,
+      "reward": 900,
+      "unlocks": "m8",
+      "briefing": "Destroyer Vigilant is running the polar strait with reinforcements. Missile boats are shadowing her - sink them before they fire, then clear the CAP that will answer.",
+      "aceBonus": [
+        { "id": "b1", "desc": "Seven or more kills", "condition": "min_kills:7" },
+        { "id": "b2", "desc": "Finish under 14 minutes", "condition": "under_time:840" },
+        { "id": "b3", "desc": "Never take a hit", "condition": "no_damage_taken" }
+      ],
+      "assets": [
+        { "kind": "ship", "group": "convoy", "zone": "convoyRoute", "hp": 140 }
+      ],
+      "stages": [
+        {
+          "id": "s1",
+          "type": "naval",
+          "waves": [
+            { "at": 0, "units": [
+              { "kind": "ship", "group": "boats", "zone": "boatA", "count": 2, "hp": 120, "cruise": { "targetGroup": "convoy", "firstAt": 14, "every": 40 } },
+              { "kind": "ship", "group": "boats", "zone": "boatB", "count": 1, "hp": 120, "cruise": { "targetGroup": "convoy", "firstAt": 30, "every": 40 } }
+            ] }
+          ],
+          "objectives": [
+            { "id": "o1", "label": "Protect destroyer Vigilant", "type": "escort", "groups": ["convoy"], "holdTime": 150 },
+            { "id": "o2", "label": "Sink the shadowing boats", "type": "naval", "groups": ["boats"], "count": 3, "timer": 300 }
+          ]
+        },
+        {
+          "id": "s2",
+          "type": "air_to_air",
+          "waves": [
+            { "at": 0, "units": [ { "kind": "jet", "group": "cap", "zone": "capA", "count": 2, "difficulty": 1 } ] },
+            { "at": 25, "units": [ { "kind": "jet", "group": "cap", "zone": "capB", "count": 2, "difficulty": 2 } ] }
+          ],
+          "objectives": [
+            { "id": "o3", "label": "Clear the answering CAP", "type": "air_to_air", "groups": ["cap"], "count": 4, "timer": 330 }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "m8",
+      "title": "Night Insertion",
+      "map": "night",
+      "tier": 3,
+      "reward": 1000,
+      "unlocks": "m9",
+      "briefing": "Moonlight raid on the blacked-out airstrip. Slip in low under the radar, mark the field on the recon run, then kill the early warning radar, the flight line and the SAM cupolas. Watch your altitude in the dark.",
+      "aceBonus": [
+        { "id": "b1", "desc": "Eight or more kills", "condition": "min_kills:8" },
+        { "id": "b2", "desc": "Finish under 15 minutes", "condition": "under_time:900" },
+        { "id": "b3", "desc": "Never take a hit", "condition": "no_damage_taken" }
+      ],
+      "stages": [
+        {
+          "id": "s1",
+          "type": "recon",
+          "waves": [],
+          "objectives": [
+            { "id": "o1", "label": "Mark the airstrip (low pass)", "type": "recon", "waypoints": ["wpN1", "wpN2", "wpN3"], "altMin": 120, "radius": 700, "timer": 300 }
+          ]
+        },
+        {
+          "id": "s2",
+          "type": "ground",
+          "waves": [
+            { "at": 0, "units": [
+              { "kind": "ground", "group": "radar", "zone": "runwayRow", "count": 1, "hp": 50, "variant": 6 },
+              { "kind": "ground", "group": "flightline", "zone": "runwayRow", "count": 3, "hp": 60, "variant": 5 },
+              { "kind": "ground", "group": "sams", "zone": "samRow", "count": 2, "hp": 60, "variant": 4 }
+            ] }
+          ],
+          "objectives": [
+            { "id": "o2", "label": "Destroy the early warning radar", "type": "ground", "groups": ["radar"], "count": 1, "timer": 240 },
+            { "id": "o3", "label": "Destroy the flight line", "type": "ground", "groups": ["flightline"], "count": 3, "timer": 300, "deps": ["o2"] },
+            { "id": "o4", "label": "Destroy the SAM cupolas", "type": "ground", "groups": ["sams"], "count": 2, "timer": 300 }
+          ]
+        },
+        {
+          "id": "s3",
+          "type": "air_to_air",
+          "waves": [
+            { "at": 0, "units": [ { "kind": "jet", "group": "cap", "zone": "capA", "count": 2, "difficulty": 2 } ] },
+            { "at": 25, "units": [ { "kind": "jet", "group": "cap", "zone": "capB", "count": 2, "difficulty": 2 } ] }
+          ],
+          "objectives": [
+            { "id": "o5", "label": "Fight off the night fighters", "type": "air_to_air", "groups": ["cap"], "count": 4, "timer": 330 }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "m9",
+      "title": "Task Force",
+      "map": "ocean",
+      "tier": 3,
+      "reward": 1100,
+      "unlocks": "m10",
+      "briefing": "A four-boat gun task force is shelling our positions. Sink the whole group, then break up the six-ship air wing they called in. Nothing fancy - just violence on schedule.",
+      "aceBonus": [
+        { "id": "b1", "desc": "Ten or more kills", "condition": "min_kills:10" },
+        { "id": "b2", "desc": "Finish under 15 minutes", "condition": "under_time:900" },
+        { "id": "b3", "desc": "Never take a hit", "condition": "no_damage_taken" }
+      ],
+      "stages": [
+        {
+          "id": "s1",
+          "type": "naval",
+          "waves": [
+            { "at": 0, "units": [
+              { "kind": "ship", "group": "boats", "zone": "boatA", "count": 2, "hp": 110 },
+              { "kind": "ship", "group": "boats", "zone": "boatB", "count": 2, "hp": 110 }
+            ] }
+          ],
+          "objectives": [
+            { "id": "o1", "label": "Sink the gun task force", "type": "naval", "groups": ["boats"], "count": 4, "timer": 300 }
+          ]
+        },
+        {
+          "id": "s2",
+          "type": "air_to_air",
+          "waves": [
+            { "at": 0, "units": [ { "kind": "jet", "group": "cap", "zone": "capA", "count": 3, "difficulty": 1 } ] },
+            { "at": 30, "units": [ { "kind": "jet", "group": "cap", "zone": "capB", "count": 3, "difficulty": 2 } ] }
+          ],
+          "objectives": [
+            { "id": "o2", "label": "Break up the air wing", "type": "air_to_air", "groups": ["cap"], "count": 6, "timer": 360 }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "m10",
+      "title": "Iron Storm",
+      "map": "desert",
+      "tier": 3,
+      "reward": 1200,
+      "unlocks": "m11",
+      "briefing": "The canyon AA belt has been doubled since your last visit: four SAM sites guarding a rebuilt depot. Flatten both, then deal with the five-ship interception wing they scramble.",
+      "aceBonus": [
+        { "id": "b1", "desc": "Nine or more kills", "condition": "min_kills:9" },
+        { "id": "b2", "desc": "Finish under 15 minutes", "condition": "under_time:900" },
+        { "id": "b3", "desc": "Never take a hit", "condition": "no_damage_taken" }
+      ],
+      "stages": [
+        {
+          "id": "s1",
+          "type": "ground",
+          "waves": [
+            { "at": 0, "units": [
+              { "kind": "ground", "group": "sams", "zone": "canyonRow", "count": 4, "hp": 60, "variant": 4 },
+              { "kind": "ground", "group": "depot", "zone": "depotRow", "count": 3, "hp": 60, "variant": 5 }
+            ] }
+          ],
+          "objectives": [
+            { "id": "o1", "label": "Destroy the AA belt", "type": "ground", "groups": ["sams"], "count": 4, "timer": 300 },
+            { "id": "o2", "label": "Flatten the rebuilt depot", "type": "ground", "groups": ["depot"], "count": 3, "timer": 300, "deps": ["o1"] }
+          ]
+        },
+        {
+          "id": "s2",
+          "type": "air_to_air",
+          "waves": [
+            { "at": 0, "units": [ { "kind": "jet", "group": "cap", "zone": "capA", "count": 2, "difficulty": 2 } ] },
+            { "at": 20, "units": [ { "kind": "jet", "group": "cap", "zone": "capB", "count": 3, "difficulty": 2 } ] }
+          ],
+          "objectives": [
+            { "id": "o3", "label": "Down the interception wing", "type": "air_to_air", "groups": ["cap"], "count": 5, "timer": 360 }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "m11",
+      "title": "Oxcart",
+      "map": "ocean",
+      "tier": 4,
+      "reward": 1500,
+      "unlocks": "m12",
+      "recommendedJet": "sr71",
+      "briefing": "Photo pass over the enemy seaboard, and nothing else matters. Take the Blackbird upstairs, run all five camera gates high and fast, and be home in six minutes. Nothing in their inventory can catch you at Mach 3 - do not slow down to look.",
+      "aceBonus": [
+        { "id": "b1", "desc": "Finish the run under 5 minutes", "condition": "under_time:300" },
+        { "id": "b2", "desc": "Never take a hit", "condition": "no_damage_taken" },
+        { "id": "b3", "desc": "No weapons - cameras only", "condition": "no_missile_fired" }
+      ],
+      "stages": [
+        {
+          "id": "s1",
+          "type": "recon",
+          "waves": [
+            { "at": 5, "units": [ { "kind": "jet", "group": "scramble", "zone": "capA", "count": 2, "difficulty": 0 } ] }
+          ],
+          "objectives": [
+            { "id": "o1", "label": "Photo run - all five gates", "type": "recon", "waypoints": ["wpO1", "wpO2", "wpO3", "wpO4", "wpO5"], "altMin": 2000, "radius": 900, "timer": 330 }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "m12",
+      "title": "Fortress Coast",
+      "map": "city",
+      "tier": 4,
+      "reward": 1600,
+      "unlocks": "m13",
+      "briefing": "Frigate Meridian is pulling your people out of the harbor under heavy fire. Shield her from the missile boats and their cruise shots, then deal with the veteran squadron sent to finish the job.",
+      "aceBonus": [
+        { "id": "b1", "desc": "Eight or more kills", "condition": "min_kills:8" },
+        { "id": "b2", "desc": "Finish under 14.5 minutes", "condition": "under_time:870" },
+        { "id": "b3", "desc": "Never take a hit", "condition": "no_damage_taken" }
+      ],
+      "assets": [
+        { "kind": "ship", "group": "convoy", "zone": "convoyRoute", "hp": 150 }
+      ],
+      "stages": [
+        {
+          "id": "s1",
+          "type": "naval",
+          "waves": [
+            { "at": 0, "units": [
+              { "kind": "ship", "group": "boats", "zone": "harborRow", "count": 3, "hp": 130, "cruise": { "targetGroup": "convoy", "firstAt": 12, "every": 40 } }
+            ] }
+          ],
+          "objectives": [
+            { "id": "o1", "label": "Protect frigate Meridian", "type": "escort", "groups": ["convoy"], "holdTime": 150 },
+            { "id": "o2", "label": "Sink the harbor batteries", "type": "naval", "groups": ["boats"], "count": 3, "timer": 300 }
+          ]
+        },
+        {
+          "id": "s2",
+          "type": "air_to_air",
+          "waves": [
+            { "at": 0, "units": [ { "kind": "jet", "group": "cap", "zone": "capA", "count": 3, "difficulty": 2 } ] },
+            { "at": 30, "units": [ { "kind": "jet", "group": "cap", "zone": "capB", "count": 2, "difficulty": 2 } ] }
+          ],
+          "objectives": [
+            { "id": "o3", "label": "Break the veteran squadron", "type": "air_to_air", "groups": ["cap"], "count": 5, "timer": 360 }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "m13",
+      "title": "Polar Stack",
+      "map": "arctic",
+      "tier": 4,
+      "reward": 1700,
+      "unlocks": "m14",
+      "briefing": "Their northern early warning stack - radar in the pass, depot on the shelf, SAMs on the ridge - tracks every sortie we fly. Kill it all, then survive the six-ship intercept package they keep on alert.",
+      "aceBonus": [
+        { "id": "b1", "desc": "Ten or more kills", "condition": "min_kills:10" },
+        { "id": "b2", "desc": "Finish under 15 minutes", "condition": "under_time:900" },
+        { "id": "b3", "desc": "Never take a hit", "condition": "no_damage_taken" }
+      ],
+      "stages": [
+        {
+          "id": "s1",
+          "type": "ground",
+          "waves": [
+            { "at": 0, "units": [
+              { "kind": "ground", "group": "radar", "zone": "radarRow", "count": 1, "hp": 50, "variant": 6 },
+              { "kind": "ground", "group": "depot", "zone": "depotRow", "count": 3, "hp": 60, "variant": 5 },
+              { "kind": "ground", "group": "sams", "zone": "samRow", "count": 3, "hp": 60, "variant": 4 }
+            ] }
+          ],
+          "objectives": [
+            { "id": "o1", "label": "Destroy the pass radar", "type": "ground", "groups": ["radar"], "count": 1, "timer": 240 },
+            { "id": "o2", "label": "Destroy the shelf depot", "type": "ground", "groups": ["depot"], "count": 3, "timer": 300, "deps": ["o1"] },
+            { "id": "o3", "label": "Destroy the ridge SAMs", "type": "ground", "groups": ["sams"], "count": 3, "timer": 300 }
+          ]
+        },
+        {
+          "id": "s2",
+          "type": "air_to_air",
+          "waves": [
+            { "at": 0, "units": [ { "kind": "jet", "group": "cap", "zone": "capA", "count": 3, "difficulty": 2 } ] },
+            { "at": 25, "units": [ { "kind": "jet", "group": "cap", "zone": "capB", "count": 3, "difficulty": 2 } ] }
+          ],
+          "objectives": [
+            { "id": "o4", "label": "Survive the alert package", "type": "air_to_air", "groups": ["cap"], "count": 6, "timer": 360 }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "m14",
+      "title": "Stormbreak",
+      "map": "island",
+      "tier": 5,
+      "reward": 2500,
+      "unlocks": null,
+      "briefing": "This is it - the whole Sainte-Marie complex, every gun they have, and their last veteran wing. Run the insertion recon, shield the landing force's escort, gut the air defense and the flight line, then sweep the CAP. Fly everything you have learned.",
+      "aceBonus": [
+        { "id": "b1", "desc": "Twelve or more kills", "condition": "min_kills:12" },
+        { "id": "b2", "desc": "Finish under 20 minutes", "condition": "under_time:1200" },
+        { "id": "b3", "desc": "Never take a hit", "condition": "no_damage_taken" }
+      ],
+      "assets": [
+        { "kind": "ship", "group": "taskforce", "zone": "taskforce", "hp": 160 }
+      ],
+      "stages": [
+        {
+          "id": "s1",
+          "type": "recon",
+          "waves": [],
+          "objectives": [
+            { "id": "o1", "label": "Insertion recon run", "type": "recon", "waypoints": ["wpI1", "wpI2", "wpI3"], "altMin": 200, "radius": 800, "timer": 300 }
+          ]
+        },
+        {
+          "id": "s2",
+          "type": "naval",
+          "waves": [
+            { "at": 0, "units": [
+              { "kind": "ship", "group": "boats", "zone": "boatA", "count": 2, "hp": 130, "cruise": { "targetGroup": "taskforce", "firstAt": 12, "every": 40 } },
+              { "kind": "ship", "group": "boats", "zone": "boatB", "count": 1, "hp": 130, "cruise": { "targetGroup": "taskforce", "firstAt": 26, "every": 40 } }
+            ] }
+          ],
+          "objectives": [
+            { "id": "o2", "label": "Shield the landing force escort", "type": "escort", "groups": ["taskforce"], "holdTime": 150 },
+            { "id": "o3", "label": "Sink the island gunboats", "type": "naval", "groups": ["boats"], "count": 3, "timer": 300 }
+          ]
+        },
+        {
+          "id": "s3",
+          "type": "ground",
+          "waves": [
+            { "at": 0, "units": [
+              { "kind": "ground", "group": "radar", "zone": "strikeRow", "count": 1, "hp": 50, "variant": 6 },
+              { "kind": "ground", "group": "flightline", "zone": "strikeRow", "count": 3, "hp": 60, "variant": 5 },
+              { "kind": "ground", "group": "sams", "zone": "samRow2", "count": 3, "hp": 60, "variant": 4 }
+            ] }
+          ],
+          "objectives": [
+            { "id": "o4", "label": "Destroy the early warning radar", "type": "ground", "groups": ["radar"], "count": 1, "timer": 240 },
+            { "id": "o5", "label": "Destroy the flight line", "type": "ground", "groups": ["flightline"], "count": 3, "timer": 300, "deps": ["o4"] },
+            { "id": "o6", "label": "Destroy the island SAMs", "type": "ground", "groups": ["sams"], "count": 3, "timer": 300 }
+          ]
+        },
+        {
+          "id": "s4",
+          "type": "air_to_air",
+          "waves": [
+            { "at": 0, "units": [ { "kind": "jet", "group": "cap", "zone": "capA", "count": 3, "difficulty": 2 } ] },
+            { "at": 25, "units": [ { "kind": "jet", "group": "cap", "zone": "capB", "count": 3, "difficulty": 2 } ] },
+            { "at": 60, "units": [ { "kind": "jet", "group": "cap", "zone": "capC", "count": 2, "difficulty": 2 } ] }
+          ],
+          "objectives": [
+            { "id": "o7", "label": "Sweep the last veteran wing", "type": "air_to_air", "groups": ["cap"], "count": 8, "timer": 420 }
           ]
         }
       ]

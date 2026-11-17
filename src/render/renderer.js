@@ -1,4 +1,4 @@
-// Skyburn Phase 0 - Renderer (Task 0.4): raw WebGL2, no library. Perspective + view matrices,
+﻿// Skyburn Phase 0 - Renderer (Task 0.4): raw WebGL2, no library. Perspective + view matrices,
 // resize with devicePixelRatio scaling and dynamic resolution scale. Geometry is uploaded once
 // at init; the frame path only binds and draws (zero allocation).
 
@@ -126,6 +126,8 @@ export function mat4FromYPR(out, yaw, pitch, roll, x, y, z) {
 
 const FOG_COLOR = new Float32Array([0.76, 0.84, 0.90]);
 const SUN_DIR = new Float32Array([0.42, 0.55, -0.72]); // normalized below
+const ZENITH = new Float32Array([0.20, 0.44, 0.76]);
+const HORIZON = new Float32Array([0.76, 0.84, 0.90]);
 
 export class Renderer {
   constructor(canvas) {
@@ -146,6 +148,12 @@ export class Renderer {
     this.dpr = 1;
     this.drawCalls = 0;
     this.triangles = 0;
+
+    // Phase 3B atmosphere: per-map fog/sun/sky gradient (maps.json `atmosphere` presets).
+    this._fog = new Float32Array(FOG_COLOR);
+    this._sun = new Float32Array(SUN_DIR);
+    this._zenith = new Float32Array(ZENITH);
+    this._horizon = new Float32Array(HORIZON);
 
     this._progTerrain = this._compile(TERRAIN_VS, TERRAIN_FS);
     this._progOcean = this._compile(OCEAN_VS, OCEAN_FS);
@@ -257,8 +265,42 @@ export class Renderer {
     return { vao, idxCount: idx.length, ibo, vbo };
   }
 
-  setTerrain(mesh) { this._terrain = this._uploadInterleaved(mesh.verts, mesh.idx, this.gl.UNSIGNED_INT, mesh.stride); }
-  setOcean(mesh) { this._ocean = this._uploadPositions(mesh.verts, mesh.idx); }
+  // Re-callable (Phase 3B: terrain rebuilt per map seed): free the previous GPU buffers.
+  _freeMesh(m) {
+    if (!m) return;
+    const gl = this.gl;
+    if (m.vao) gl.deleteVertexArray(m.vao);
+    if (m.vbo) gl.deleteBuffer(m.vbo);
+    if (m.ibo) gl.deleteBuffer(m.ibo);
+  }
+
+  setTerrain(mesh) {
+    this._freeMesh(this._terrain);
+    this._terrain = this._uploadInterleaved(mesh.verts, mesh.idx, this.gl.UNSIGNED_INT, mesh.stride);
+  }
+
+  setOcean(mesh) {
+    this._freeMesh(this._ocean);
+    this._ocean = this._uploadPositions(mesh.verts, mesh.idx);
+  }
+
+  // Phase 3B: per-map atmosphere preset from maps.json - { fog, sun, zenith, horizon } RGB
+  // triples. Missing keys (or a null/undefined preset) keep/reset the classic blue defaults.
+  // Init-time only (called from buildWorld, never per frame); sun is normalized.
+  setAtmosphere(preset) {
+    const p = preset || {};
+    const copy = (dst, src, fallback) => {
+      const s3 = (Array.isArray(src) && src.length >= 3) ? src : fallback;
+      dst[0] = s3[0]; dst[1] = s3[1]; dst[2] = s3[2];
+    };
+    copy(this._fog, p.fog, FOG_COLOR);
+    copy(this._sun, p.sun, SUN_DIR);
+    copy(this._zenith, p.zenith, ZENITH);
+    copy(this._horizon, p.horizon, HORIZON);
+    const s = this._sun;
+    const l = Math.sqrt(s[0] * s[0] + s[1] * s[1] + s[2] * s[2]) || 1;
+    s[0] /= l; s[1] /= l; s[2] /= l;
+  }
   // Phase 3A: jet LOD sets keyed by ents.variant (one set per shape family).
   // sets = [ [lod0, lod1, lod2] per shape ]; scene.jetKind[i] selects the set.
   setJetLodSets(sets) {
@@ -353,7 +395,7 @@ export class Renderer {
     mat4Multiply(this._viewProj, this._proj, this._view);
     mat4Invert(this._invVP, this._viewProj);
 
-    gl.clearColor(FOG_COLOR[0], FOG_COLOR[1], FOG_COLOR[2], 1);
+    gl.clearColor(this._fog[0], this._fog[1], this._fog[2], 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
     // --- sky (fullscreen triangle, no depth) ---
@@ -363,7 +405,9 @@ export class Renderer {
     gl.bindVertexArray(this._emptyVao);
     gl.uniformMatrix4fv(sky.u.uInvVP, false, this._invVP);
     gl.uniform3f(sky.u.uCamPos, camPos[0], camPos[1], camPos[2]);
-    gl.uniform3f(sky.u.uSunDir, SUN_DIR[0], SUN_DIR[1], SUN_DIR[2]);
+    gl.uniform3f(sky.u.uSunDir, this._sun[0], this._sun[1], this._sun[2]);
+    gl.uniform3f(sky.u.uZenith, this._zenith[0], this._zenith[1], this._zenith[2]);
+    gl.uniform3f(sky.u.uHorizon, this._horizon[0], this._horizon[1], this._horizon[2]);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.bindVertexArray(null);
     gl.enable(gl.DEPTH_TEST);
@@ -375,9 +419,9 @@ export class Renderer {
       gl.useProgram(t.prog);
       gl.bindVertexArray(this._terrain.vao);
       gl.uniformMatrix4fv(t.u.uViewProj, false, this._viewProj);
-      gl.uniform3f(t.u.uSunDir, SUN_DIR[0], SUN_DIR[1], SUN_DIR[2]);
+      gl.uniform3f(t.u.uSunDir, this._sun[0], this._sun[1], this._sun[2]);
       gl.uniform3f(t.u.uCamPos, camPos[0], camPos[1], camPos[2]);
-      gl.uniform3f(t.u.uFogColor, FOG_COLOR[0], FOG_COLOR[1], FOG_COLOR[2]);
+      gl.uniform3f(t.u.uFogColor, this._fog[0], this._fog[1], this._fog[2]);
       gl.drawElements(gl.TRIANGLES, this._terrain.idxCount, gl.UNSIGNED_INT, 0);
       gl.bindVertexArray(null);
       this.drawCalls++;
@@ -391,9 +435,9 @@ export class Renderer {
       gl.bindVertexArray(this._ocean.vao);
       gl.uniformMatrix4fv(o.u.uViewProj, false, this._viewProj);
       gl.uniform1f(o.u.uTime, timeSec);
-      gl.uniform3f(o.u.uSunDir, SUN_DIR[0], SUN_DIR[1], SUN_DIR[2]);
+      gl.uniform3f(o.u.uSunDir, this._sun[0], this._sun[1], this._sun[2]);
       gl.uniform3f(o.u.uCamPos, camPos[0], camPos[1], camPos[2]);
-      gl.uniform3f(o.u.uFogColor, FOG_COLOR[0], FOG_COLOR[1], FOG_COLOR[2]);
+      gl.uniform3f(o.u.uFogColor, this._fog[0], this._fog[1], this._fog[2]);
       gl.drawElements(gl.TRIANGLES, this._ocean.idxCount, gl.UNSIGNED_INT, 0);
       gl.bindVertexArray(null);
       this.drawCalls++;
@@ -408,9 +452,9 @@ export class Renderer {
       gl.bindVertexArray(this._carrier.vao);
       gl.uniformMatrix4fv(j.u.uViewProj, false, this._viewProj);
       gl.uniformMatrix4fv(j.u.uModel, false, this._model);
-      gl.uniform3f(j.u.uSunDir, SUN_DIR[0], SUN_DIR[1], SUN_DIR[2]);
+      gl.uniform3f(j.u.uSunDir, this._sun[0], this._sun[1], this._sun[2]);
       gl.uniform3f(j.u.uCamPos, camPos[0], camPos[1], camPos[2]);
-      gl.uniform3f(j.u.uFogColor, FOG_COLOR[0], FOG_COLOR[1], FOG_COLOR[2]);
+      gl.uniform3f(j.u.uFogColor, this._fog[0], this._fog[1], this._fog[2]);
       gl.drawElements(gl.TRIANGLES, this._carrier.idxCount, gl.UNSIGNED_SHORT, 0);
       gl.bindVertexArray(null);
       this.drawCalls++;
@@ -428,9 +472,9 @@ export class Renderer {
         gl.bindVertexArray(mesh.vao);
         gl.uniformMatrix4fv(j.u.uViewProj, false, this._viewProj);
         gl.uniformMatrix4fv(j.u.uModel, false, this._model);
-        gl.uniform3f(j.u.uSunDir, SUN_DIR[0], SUN_DIR[1], SUN_DIR[2]);
+        gl.uniform3f(j.u.uSunDir, this._sun[0], this._sun[1], this._sun[2]);
         gl.uniform3f(j.u.uCamPos, camPos[0], camPos[1], camPos[2]);
-        gl.uniform3f(j.u.uFogColor, FOG_COLOR[0], FOG_COLOR[1], FOG_COLOR[2]);
+        gl.uniform3f(j.u.uFogColor, this._fog[0], this._fog[1], this._fog[2]);
         gl.drawElements(gl.TRIANGLES, mesh.idxCount, gl.UNSIGNED_SHORT, 0);
         this.drawCalls++;
         this.triangles += mesh.idxCount / 3;
@@ -446,9 +490,9 @@ export class Renderer {
         gl.bindVertexArray(this._ground.vao);
         gl.uniformMatrix4fv(j.u.uViewProj, false, this._viewProj);
         gl.uniformMatrix4fv(j.u.uModel, false, this._model);
-        gl.uniform3f(j.u.uSunDir, SUN_DIR[0], SUN_DIR[1], SUN_DIR[2]);
+        gl.uniform3f(j.u.uSunDir, this._sun[0], this._sun[1], this._sun[2]);
         gl.uniform3f(j.u.uCamPos, camPos[0], camPos[1], camPos[2]);
-        gl.uniform3f(j.u.uFogColor, FOG_COLOR[0], FOG_COLOR[1], FOG_COLOR[2]);
+        gl.uniform3f(j.u.uFogColor, this._fog[0], this._fog[1], this._fog[2]);
         gl.drawElements(gl.TRIANGLES, this._ground.idxCount, gl.UNSIGNED_SHORT, 0);
         this.drawCalls++;
         this.triangles += this._ground.idxCount / 3;
@@ -471,9 +515,9 @@ export class Renderer {
         gl.bindVertexArray(mesh.vao);
         gl.uniformMatrix4fv(j.u.uViewProj, false, this._viewProj);
         gl.uniformMatrix4fv(j.u.uModel, false, this._model);
-        gl.uniform3f(j.u.uSunDir, SUN_DIR[0], SUN_DIR[1], SUN_DIR[2]);
+        gl.uniform3f(j.u.uSunDir, this._sun[0], this._sun[1], this._sun[2]);
         gl.uniform3f(j.u.uCamPos, camPos[0], camPos[1], camPos[2]);
-        gl.uniform3f(j.u.uFogColor, FOG_COLOR[0], FOG_COLOR[1], FOG_COLOR[2]);
+        gl.uniform3f(j.u.uFogColor, this._fog[0], this._fog[1], this._fog[2]);
         gl.drawElements(gl.TRIANGLES, mesh.idxCount, gl.UNSIGNED_SHORT, 0);
         this.drawCalls++;
         this.triangles += mesh.idxCount / 3;

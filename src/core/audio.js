@@ -1,4 +1,4 @@
-// Skyburn Phase 1 - Core audio (PRD file list: src/core/audio.js; Task 1.8 "WebAudio pooled
+﻿// Skyburn Phase 1 - Core audio (PRD file list: src/core/audio.js; Task 1.8 "WebAudio pooled
 // engine/gun/missile/explosion/lock"). Fully synthesized - original, no external assets.
 // Everything is preallocated node pools driven by param automation (zero allocation per call).
 // Safe to import in Node (no AudioContext): every entry point guards on this.ctx.
@@ -6,6 +6,7 @@
 export class AudioSystem {
   constructor(opts) {
     this.masterVolume = (opts && opts.volume) !== undefined ? opts.volume : 0.22;
+    this.sfxVolume = (opts && opts.sfx) !== undefined ? opts.sfx : 0.9; // Task 3B.5
     this.ctx = null;
     this._engineOscA = null;
     this._engineOscB = null;
@@ -36,6 +37,12 @@ export class AudioSystem {
     master.gain.value = this.masterVolume;
     master.connect(ctx.destination);
     this.master = master;
+    // Task 3B.5: SFX bus under the master so SFX and MUSIC sliders are independent.
+    // Engine, beeps, guns, booms, launches, lock + wind all route through this node.
+    const sfx = ctx.createGain();
+    sfx.gain.value = this.sfxVolume;
+    sfx.connect(master);
+    this.sfx = sfx;
     // engine voice: two detuned saws through a lowpass
     const filt = ctx.createBiquadFilter();
     filt.type = 'lowpass';
@@ -50,7 +57,7 @@ export class AudioSystem {
     oB.type = 'sawtooth';
     oB.frequency.value = 61.7;
     oA.connect(filt); oB.connect(filt);
-    filt.connect(g); g.connect(master);
+    filt.connect(g); g.connect(sfx);
     oA.start(); oB.start();
     this._engineOscA = oA; this._engineOscB = oB;
     this._engineFilter = filt; this._engineGain = g;
@@ -62,7 +69,7 @@ export class AudioSystem {
       bo.frequency.value = 440;
       const bg = ctx.createGain();
       bg.gain.value = 0;
-      bo.connect(bg); bg.connect(master);
+      bo.connect(bg); bg.connect(sfx);
       bo.start();
       this._beepPool.push({ osc: bo, gain: bg, busy: false });
     }
@@ -81,7 +88,7 @@ export class AudioSystem {
       const bp = ctx.createBiquadFilter();
       bp.type = 'bandpass'; bp.frequency.value = 900; bp.Q.value = 1.1;
       const gg = ctx.createGain(); gg.gain.value = 0;
-      src.connect(bp); bp.connect(gg); gg.connect(master);
+      src.connect(bp); bp.connect(gg); gg.connect(sfx);
       src.start();
       this._gunPool.push({ gain: gg, filter: bp });
     }
@@ -94,7 +101,7 @@ export class AudioSystem {
       const lp = ctx.createBiquadFilter();
       lp.type = 'lowpass'; lp.frequency.value = 800;
       const gg = ctx.createGain(); gg.gain.value = 0;
-      src.connect(lp); lp.connect(gg); gg.connect(master);
+      src.connect(lp); lp.connect(gg); gg.connect(sfx);
       src.start();
       this._boomPool.push({ gain: gg, filter: lp });
     }
@@ -107,7 +114,7 @@ export class AudioSystem {
       const hp = ctx.createBiquadFilter();
       hp.type = 'highpass'; hp.frequency.value = 600;
       const gg = ctx.createGain(); gg.gain.value = 0;
-      src.connect(hp); hp.connect(gg); gg.connect(master);
+      src.connect(hp); hp.connect(gg); gg.connect(sfx);
       src.start();
       this._launchPool.push({ gain: gg, filter: hp });
     }
@@ -118,7 +125,7 @@ export class AudioSystem {
     this._lockOsc.frequency.value = 950;
     this._lockGain = ctx.createGain();
     this._lockGain.gain.value = 0;
-    this._lockOsc.connect(this._lockGain); this._lockGain.connect(master);
+    this._lockOsc.connect(this._lockGain); this._lockGain.connect(sfx);
     this._lockOsc.start();
 
     // wind (looping noise -> lowpass, gain follows airspeed)
@@ -130,7 +137,7 @@ export class AudioSystem {
     this._windGain = ctx.createGain();
     this._windGain.gain.value = 0;
     wsrc.connect(this._windFilter); this._windFilter.connect(this._windGain);
-    this._windGain.connect(master);
+    this._windGain.connect(sfx);
     wsrc.start();
     return true;
   }
@@ -219,6 +226,50 @@ export class AudioSystem {
     const t = this.ctx.currentTime;
     this.beepAt(1500, 0.09, 0.3, t);
     this.beepAt(1500, 0.09, 0.3, t + 0.13);
+  }
+
+  // ---- Task 3B.5: volume sliders + radio chatter + Ace Bonus chime ----
+
+  // Apply menu slider values. Safe before init() (stored for when the context exists).
+  setVolumes(v) {
+    if (!v) return;
+    if (v.master !== undefined && isFinite(v.master)) {
+      this.masterVolume = Math.max(0, Math.min(1, v.master));
+    }
+    if (v.sfx !== undefined && isFinite(v.sfx)) {
+      this.sfxVolume = Math.max(0, Math.min(1, v.sfx));
+    }
+    if (this.ctx) {
+      this.master.gain.value = this.masterVolume;
+      this.sfx.gain.value = this.sfxVolume;
+    }
+  }
+
+  // Radio chatter (Task 3B.5 "radio chatter, TTS placeholder"): a short static squawk on
+  // the beep bus, then speechSynthesis when available. Everything guards/no-ops in Node.
+  radio(text) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    this.beepAt(1180, 0.05, 0.10, t);
+    this.beepAt(940, 0.05, 0.09, t + 0.07);
+    if (typeof window !== 'undefined' && window.speechSynthesis && text) {
+      try {
+        const u = new SpeechSynthesisUtterance(text);
+        u.volume = Math.min(1, this.masterVolume * this.sfxVolume * 4);
+        u.rate = 1.05;
+        u.pitch = 0.9;
+        window.speechSynthesis.speak(u);
+      } catch (e) { /* TTS is a placeholder - never break gameplay */ }
+    }
+  }
+
+  // Ace Bonus completion chime (Task 3B.3): quick rising major arpeggio.
+  aceChime() {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    this.beepAt(660, 0.09, 0.22, t);
+    this.beepAt(880, 0.09, 0.22, t + 0.09);
+    this.beepAt(1320, 0.16, 0.22, t + 0.18);
   }
 
   // Short UI blip through the beep pool.

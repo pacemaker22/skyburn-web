@@ -46,6 +46,17 @@ export class DebriefScreen {
       '  |  time ' + result.timeSec.toFixed(0) + ' s' +
       '  |  difficulty ' + ['ROOKIE', 'VETERAN', 'ACE'][result.difficulty] +
       (result.restores ? '  |  checkpoints used ' + result.restores : '');
+    // Task 3B.3: Ace Bonus debrief line (PRD: earned bonuses surface here, not in the HUD)
+    const note = q('#db-note');
+    if (result.aceBonuses && result.aceBonuses.length > 0) {
+      const earned = result.aceBonuses.filter((b) => b.earned);
+      note.textContent = 'ACE BONUS ' + earned.length + '/' + result.aceBonuses.length +
+        (earned.length ? ' earned: ' + earned.map((b) => b.desc).join('  |  ')
+          : ' - none earned this run');
+      note.style.color = earned.length ? '#ffd54f' : '#7a8ea3';
+    } else {
+      note.textContent = '';
+    }
     const retry = q('#db-retry');
     retry.style.display = result.success ? 'none' : 'inline-block';
     this.el.hidden = false;

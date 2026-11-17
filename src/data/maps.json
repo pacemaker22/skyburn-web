@@ -3,17 +3,28 @@
     "ocean": {
       "id": "ocean",
       "description": "Open water training range around the island chain",
+      "seed": 1337,
       "points": {
         "playerStart": { "x": 0, "z": 14000, "y": 800 },
         "droneA": { "x": -3000, "z": -6000, "y": 900, "spread": 1200 },
         "wpA1": { "x": 0, "z": 9000 },
         "wpA2": { "x": -6500, "z": 2000 },
-        "wpA3": { "x": -8000, "z": -6000 }
+        "wpA3": { "x": -8000, "z": -6000 },
+        "boatA": { "x": 6500, "z": 2500, "spread": 600 },
+        "boatB": { "x": 2500, "z": 6500, "spread": 600 },
+        "capA": { "x": 6000, "z": -6000, "y": 1200, "spread": 800 },
+        "capB": { "x": -6000, "z": 6000, "y": 1100, "spread": 800 },
+        "wpO1": { "x": 0, "z": 8000 },
+        "wpO2": { "x": -8000, "z": 3000 },
+        "wpO3": { "x": -8000, "z": -6000 },
+        "wpO4": { "x": 3000, "z": -8000 },
+        "wpO5": { "x": 9000, "z": 0 }
       }
     },
     "coast": {
       "id": "coast",
       "description": "Southern coastline patrol sector",
+      "seed": 4242,
       "points": {
         "playerStart": { "x": 9000, "z": 9000, "y": 900 },
         "wpC1": { "x": 5000, "z": 5000 },
@@ -25,6 +36,7 @@
     "rig": {
       "id": "rig",
       "description": "Kestrel-4 offshore oil platform sector",
+      "seed": 90210,
       "points": {
         "playerStart": { "x": -6000, "z": -6000, "y": 1000 },
         "rigPos": { "x": 5200, "z": 5400 },
@@ -37,14 +49,112 @@
     "island": {
       "id": "island",
       "description": "Sainte-Marie island strike complex",
+      "seed": 7717,
       "points": {
         "playerStart": { "x": 9500, "z": -8000, "y": 1000 },
         "strikeRow": { "x": -900, "z": -1300, "spread": 800 },
+        "samRow2": { "x": -2800, "z": -2600, "spread": 700 },
         "boatA": { "x": 1200, "z": 6900, "spread": 600 },
         "boatB": { "x": -1900, "z": 7300, "spread": 600 },
         "capA": { "x": 5200, "z": -4200, "y": 1200, "spread": 800 },
-        "capB": { "x": 1000, "z": 1500, "y": 1000, "spread": 800 }
+        "capB": { "x": 1000, "z": 1500, "y": 1000, "spread": 800 },
+        "capC": { "x": 0, "z": -8000, "y": 1300, "spread": 800 },
+        "taskforce": { "x": 2000, "z": 6000 },
+        "wpI1": { "x": 6000, "z": 4000 },
+        "wpI2": { "x": 0, "z": 0 },
+        "wpI3": { "x": -6000, "z": -5000 }
+      }
+    },
+    "desert": {
+      "id": "desert",
+      "description": "Sun-bleached canyon complex, dusty haze and low glare",
+      "seed": 24601,
+      "atmosphere": {
+        "fog": [0.87, 0.78, 0.62],
+        "sun": [0.55, 0.38, -0.74],
+        "zenith": [0.35, 0.50, 0.72],
+        "horizon": [0.93, 0.82, 0.63]
+      },
+      "points": {
+        "playerStart": { "x": -9500, "z": 9500, "y": 900 },
+        "wpD1": { "x": -3000, "z": 3000 },
+        "wpD2": { "x": 2000, "z": -2500 },
+        "wpD3": { "x": 6500, "z": -5500 },
+        "canyonRow": { "x": 1500, "z": -1500, "spread": 900 },
+        "depotRow": { "x": -4000, "z": -4500, "spread": 700 },
+        "capA": { "x": 6000, "z": 6000, "y": 1200, "spread": 800 },
+        "capB": { "x": -6000, "z": 1000, "y": 1100, "spread": 800 }
+      }
+    },
+    "city": {
+      "id": "city",
+      "description": "Coastal city harbor, pale steel haze over the skyline",
+      "seed": 55501,
+      "atmosphere": {
+        "fog": [0.80, 0.82, 0.86],
+        "sun": [0.42, 0.50, -0.75],
+        "zenith": [0.26, 0.44, 0.68],
+        "horizon": [0.82, 0.84, 0.87]
+      },
+      "points": {
+        "playerStart": { "x": 9500, "z": 8500, "y": 900 },
+        "harborRow": { "x": 2500, "z": 3500, "spread": 900 },
+        "samRow": { "x": -2000, "z": -3000, "spread": 800 },
+        "radarRow": { "x": -3200, "z": -3800 },
+        "convoyRoute": { "x": 0, "z": 2000 },
+        "wpU1": { "x": 4000, "z": 2000 },
+        "wpU2": { "x": -1000, "z": -1500 },
+        "wpU3": { "x": -5000, "z": -5000 },
+        "capA": { "x": 5000, "z": -5000, "y": 1200, "spread": 800 },
+        "capB": { "x": -5000, "z": 4000, "y": 1100, "spread": 800 }
+      }
+    },
+    "arctic": {
+      "id": "arctic",
+      "description": "Polar ice fields, brutal white glare and a low sun",
+      "seed": 1969,
+      "atmosphere": {
+        "fog": [0.88, 0.93, 0.97],
+        "sun": [0.62, 0.28, -0.73],
+        "zenith": [0.30, 0.50, 0.78],
+        "horizon": [0.88, 0.94, 0.99]
+      },
+      "points": {
+        "playerStart": { "x": -8000, "z": 9000, "y": 900 },
+        "convoyRoute": { "x": 0, "z": 3000 },
+        "boatA": { "x": 2500, "z": 4500, "spread": 500 },
+        "boatB": { "x": -2500, "z": 1500, "spread": 500 },
+        "radarRow": { "x": -1500, "z": -3500, "spread": 600 },
+        "depotRow": { "x": 3500, "z": -4000, "spread": 700 },
+        "samRow": { "x": 1000, "z": -2500, "spread": 800 },
+        "wpA1": { "x": -4000, "z": 2000 },
+        "wpA2": { "x": 0, "z": -2000 },
+        "wpA3": { "x": 5000, "z": -5000 },
+        "capA": { "x": 6000, "z": 1000, "y": 1200, "spread": 800 },
+        "capB": { "x": -5500, "z": -3500, "y": 1100, "spread": 800 }
+      }
+    },
+    "night": {
+      "id": "night",
+      "description": "Night raid over a blacked-out airstrip, moonlight only",
+      "seed": 5040,
+      "atmosphere": {
+        "fog": [0.07, 0.10, 0.17],
+        "sun": [0.25, 0.45, -0.35],
+        "zenith": [0.02, 0.04, 0.09],
+        "horizon": [0.05, 0.08, 0.15]
+      },
+      "points": {
+        "playerStart": { "x": 9000, "z": -9000, "y": 900 },
+        "runwayRow": { "x": -1200, "z": -1500, "spread": 800 },
+        "samRow": { "x": 2200, "z": 600, "spread": 700 },
+        "wpN1": { "x": 3000, "z": -2000 },
+        "wpN2": { "x": -1500, "z": 1000 },
+        "wpN3": { "x": -6000, "z": 4500 },
+        "capA": { "x": 5000, "z": 5000, "y": 1200, "spread": 800 },
+        "capB": { "x": -5000, "z": -5000, "y": 1100, "spread": 800 }
       }
     }
   }
 }
+

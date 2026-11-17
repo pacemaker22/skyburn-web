@@ -8,6 +8,7 @@
 import { GameLoop, FIXED_DT } from './core/loop.js';
 import { InputSystem, ACTION } from './core/input.js';
 import { AudioSystem } from './core/audio.js';
+import { MusicSystem } from './audio/music.js';
 import { SaveSystem } from './core/save.js';
 import {
   Renderer, buildShipLod, buildRigLod, buildGroundLod,
@@ -159,7 +160,13 @@ async function boot() {
   renderer.setGroundMesh(buildGroundLod());
 
   const audio = new AudioSystem({});
-  const input = new InputSystem({ onFirstInput: () => { if (audio.init()) audio.resume(); } });
+  const music = new MusicSystem(audio);   // Task 3B.5: procedural music loop
+  audio.setVolumes(saveData.settings);    // menu sliders (persisted)
+  music.setVolume(saveData.settings && saveData.settings.music !== undefined
+    ? saveData.settings.music : 0.5);
+  const input = new InputSystem({ onFirstInput: () => {
+    if (audio.init()) { audio.resume(); music.start(); }
+  } });
   input.attach(canvas, window);
 
   // ---- persistence (Tasks 2.6 + 2.7): progress, unlocks, results, checkpoints ----
@@ -216,6 +223,7 @@ async function boot() {
     } else if (next === GAME_STATE.PLAYING) {
       missionHud.show();
       audio.resume();
+      music.start();   // Task 3B.5 (idempotent)
     } else if (next === GAME_STATE.DEBRIEF) {
       const res = world ? world.takeResults() : null;
       if (res && res.missionId) {
@@ -245,6 +253,12 @@ async function boot() {
     const freeMode = !!opts.free;
     const missionDef = opts.missionDef || null;
     const map = opts.map || maps.ocean;
+    // Phase 3B: every map rebuilds the procedural terrain from its own seed and applies
+    // its atmosphere preset (fog/sun/sky gradient). setTerrain frees the previous GPU
+    // buffers; the shadowing const below is the world-scoped terrain for this session.
+    const terrain = new Terrain({ seed: map.seed !== undefined ? map.seed : 1337 });
+    renderer.setTerrain(terrain.buildMesh());
+    renderer.setAtmosphere(map.atmosphere || null);
     const worldDifficulty = opts.difficulty !== undefined ? opts.difficulty : difficulty;
     const playerData = opts.jetData;
     const enemyData = jetList.find((j) => j.id === 'mig29') || jetList[jetList.length - 1];
@@ -297,6 +311,7 @@ async function boot() {
     let mission = null;
     let spawner = null;
     let cruiseWarn = false;
+    let lastRadioMs = -999999;   // Task 3B.5 radio throttle (stage transitions)
     if (!freeMode) {
       spawner = new Spawner(ents, {
         missiles: null, terrain, jetsData: jetList, playerId,
@@ -323,6 +338,18 @@ async function boot() {
               (stageDef.type || '').toUpperCase().replace('_', ' '));
           },
           onProtectedDestroyed: () => missionHud.banner('KESTREL-4 DESTROYED'),
+          onMissionEvent: (msg) => {
+            // Task 3B.5: radio chatter on stage transitions (squawk + TTS placeholder)
+            const nowMs = performance.now();
+            if (nowMs - lastRadioMs < 3000) return;
+            lastRadioMs = nowMs;
+            audio.radio(msg);
+          },
+          onAceBonus: (b) => {
+            // Task 3B.3: the ONLY in-flight ace marker is the completion banner + chime
+            missionHud.banner('ACE BONUS - ' + b.desc);
+            audio.aceChime();
+          },
         },
       });
     }
@@ -449,6 +476,7 @@ async function boot() {
 
     function applyDamage(id, dmg, hx, hy, hz) {
       const killed = ents.damage(id, dmg);
+      if (id === playerId && mission) mission.notePlayerDamaged(); // Task 3B.3 ace feed
       if (killed) {
         particles.burstExplosion(ents.pos[id * 3], ents.pos[id * 3 + 1], ents.pos[id * 3 + 2]);
         audio.explosion();
@@ -546,6 +574,7 @@ async function boot() {
         view.fx, view.fy, view.fz, launchSpeed, tgtId);
       if (mid >= 0) {
         audio.missileLaunch();
+        if (shooterEntId === playerId && mission) mission.notePlayerMissileFired(); // 3B.3
         return true;
       }
       return false; // pool full
@@ -1260,8 +1289,8 @@ async function boot() {
       '<div class="sb-menu-list" id="menu-list"></div>' +
       '<div class="sb-sub">DIFFICULTY</div>' +
       '<div class="sb-row" id="menu-diff"></div>' +
-      '<div class="sb-meta" style="margin-top:10px">Phase 2 - missions M1-M4 + free flight. ' +
-      'Checkpoints save at every stage start.</div>' +
+      '<div class="sb-meta" style="margin-top:10px">Phase 3 - missions M1-M14 across eight ' +
+      'sectors, plus free flight. Checkpoints save at every stage start.</div>' +
       '</div>';
     const list = menuEl.querySelector('#menu-list');
     for (const def of missions) {
@@ -1318,6 +1347,35 @@ async function boot() {
       });
       diffRow.appendChild(b);
     });
+
+    // Task 3B.5: volume sliders (persisted in saveData.settings; applied immediately)
+    const settings = saveData.settings || (saveData.settings = {});
+    const volRow = document.createElement('div');
+    volRow.className = 'sb-vol-row';
+    [['master', 'MASTER', (v) => audio.setVolumes({ master: v })],
+     ['music', 'MUSIC', (v) => music.setVolume(v)],
+     ['sfx', 'SFX', (v) => audio.setVolumes({ sfx: v })]].forEach(([key, label, apply]) => {
+      const wrap = document.createElement('div');
+      wrap.className = 'sb-vol';
+      const name = document.createElement('span');
+      name.textContent = label;
+      const slider = document.createElement('input');
+      slider.type = 'range';
+      slider.min = '0';
+      slider.max = '1';
+      slider.step = '0.05';
+      slider.value = String(settings[key] !== undefined ? settings[key] : 0.5);
+      slider.addEventListener('input', () => {
+        const v = parseFloat(slider.value);
+        settings[key] = v;
+        apply(v);
+        void persistSave();
+      });
+      wrap.appendChild(name);
+      wrap.appendChild(slider);
+      volRow.appendChild(wrap);
+    });
+    menuEl.querySelector('.sb-panel').appendChild(volRow);
   }
   function menuShow() { menuEl.hidden = false; refreshMenu(); }
   function menuHide() { menuEl.hidden = true; }
@@ -1374,6 +1432,7 @@ async function boot() {
     },
     render: (alpha) => {
       const now = performance.now();
+      music.tick();   // Task 3B.5: lookahead scheduler (cheap; no-op when not playing)
       if (game.state === GAME_STATE.PLAYING && world) world.render(alpha, now);
       else renderAttract(now);
     },

@@ -18,7 +18,8 @@ export function defaultSaveData() {
     checkpoint: null,              // { missionId, stageIndex, difficulty, timeSec, player {...} }
     credits: 1500,                 // Task 3A.4: earned from debrief, spent on jets
     ownedJets: ['f16c', 'mig29'],  // Task 3A.4: jets the hangar may select (starter pair)
-    settings: {},                  // reserved (Phase 5: volume, colorblind, remap)
+    // Task 3B.5: volume sliders (master/SFX on the audio graph, music on the MusicSystem).
+    settings: { master: 0.22, music: 0.5, sfx: 0.9 },
   };
 }
 
@@ -36,7 +37,9 @@ export function mergeSave(loaded) {
   if (loaded.checkpoint && typeof loaded.checkpoint === 'object') out.checkpoint = loaded.checkpoint;
   if (typeof loaded.credits === 'number' && isFinite(loaded.credits)) out.credits = loaded.credits;
   if (Array.isArray(loaded.ownedJets)) out.ownedJets = loaded.ownedJets.slice();
-  if (loaded.settings && typeof loaded.settings === 'object') out.settings = loaded.settings;
+  if (loaded.settings && typeof loaded.settings === 'object') {
+    out.settings = Object.assign({}, base.settings, loaded.settings);
+  }
   return out;
 }
 

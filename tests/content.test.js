@@ -11,10 +11,13 @@ import { fileURLToPath } from 'node:url';
 import { buildJetKitLod, SHAPE_IDS, shapeIndexFor } from '../src/render/models.js';
 import { buyJet, jetOwned, creditsForRun, statRows, compareRows } from '../src/ui/hangar.js';
 import { defaultSaveData, mergeSave, SaveSystem, MemoryBackend } from '../src/core/save.js';
+import { parseAceCondition } from '../src/mission/ace.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const jetsData = JSON.parse(readFileSync(join(ROOT, 'src/data/jets.json'), 'utf-8'));
 const weaponsData = JSON.parse(readFileSync(join(ROOT, 'src/data/weapons.json'), 'utf-8'));
+const missionsData = JSON.parse(readFileSync(join(ROOT, 'src/data/missions.json'), 'utf-8'));
+const mapsData = JSON.parse(readFileSync(join(ROOT, 'src/data/maps.json'), 'utf-8'));
 const JETS = jetsData.jets;
 const WEAPONS = weaponsData.weapons;
 
@@ -248,5 +251,123 @@ test('save: credits + ownedJets defaults, merge roundtrip through the backend', 
   assert.ok(reloaded.ownedJets.indexOf('a10') >= 0);
   assert.ok(jetOwned(reloaded, 'a10'));
 });
+
+// ---------------------------------------------------------------------------
+// 3B.1 + 3B.2 + 3B.4: eight maps, missions M5-M14, unlock chain, zone refs, budgets
+
+test('3B.1 maps: eight sectors with seeds/atmosphere; every referenced zone exists', () => {
+  const MAPS = mapsData.maps;
+  for (const n of ['ocean', 'coast', 'rig', 'island', 'desert', 'city', 'arctic', 'night']) {
+    assert.ok(MAPS[n], 'map ' + n + ' exists');
+  }
+  for (const id of Object.keys(MAPS)) {
+    const m = MAPS[id];
+    assert.equal(m.id, id);
+    assert.ok(m.points && m.points.playerStart, id + ' playerStart');
+    assert.ok(Number.isInteger(m.seed), id + ' integer terrain seed');
+    if (m.atmosphere) {
+      for (const k of ['fog', 'zenith', 'horizon']) {
+        const v = m.atmosphere[k];
+        assert.ok(Array.isArray(v) && v.length === 3, id + ' atmosphere.' + k);
+        for (const c of v) assert.ok(c >= 0 && c <= 1.5, id + ' atmosphere range');
+      }
+      const sun = m.atmosphere.sun;
+      assert.ok(Array.isArray(sun) && sun.length === 3, id + ' atmosphere.sun');
+      for (const c of sun) assert.ok(c >= -1 && c <= 1, id + ' sun is a direction vector');
+    }
+  }
+  for (const def of missionsData.missions) {
+    const map = MAPS[def.map];
+    assert.ok(map, def.id + ' map exists');
+    for (const stage of def.stages) {
+      for (const w of stage.waves || []) {
+        for (const u of w.units || []) {
+          assert.ok(map.points[u.zone], def.id + ' wave zone "' + u.zone + '" on ' + def.map);
+        }
+      }
+      for (const o of stage.objectives) {
+        if (o.waypoints) {
+          for (const wp of o.waypoints) assert.ok(map.points[wp], def.id + ' waypoint ' + wp);
+        }
+      }
+    }
+    for (const a of def.assets || []) {
+      assert.ok(map.points[a.zone], def.id + ' asset zone ' + a.zone);
+    }
+  }
+});
+
+test('3B.2 missions: fourteen, linear chain, valid schemas, M14 uses all five types', () => {
+  const M = missionsData.missions;
+  assert.equal(M.length, 14);
+  for (let i = 0; i < 14; i++) assert.equal(M[i].id, 'm' + (i + 1), 'ordered m1..m14');
+  for (let i = 0; i < 13; i++) assert.equal(M[i].unlocks, 'm' + (i + 2), M[i].id + ' unlocks next');
+  assert.equal(M[13].unlocks, null, 'm14 finale ends the chain');
+  const TYPES = ['air_to_air', 'ground', 'naval', 'escort', 'recon'];
+  for (const def of M) {
+    for (const stage of def.stages) {
+      for (const o of stage.objectives) {
+        assert.ok(TYPES.indexOf(o.type) >= 0, def.id + ' objective type ' + o.type);
+        if (o.type === 'escort') {
+          assert.ok(o.groups && o.holdTime > 0, def.id + ' escort shape');
+        } else {
+          assert.ok(o.timer > 0, def.id + ' timed objective');
+          if (o.type === 'recon') {
+            assert.ok(o.waypoints.length >= 2 && o.altMin !== undefined && o.radius > 0,
+              def.id + ' recon shape');
+          } else {
+            assert.ok(o.groups && o.count > 0, def.id + ' kill-list shape');
+          }
+        }
+        for (const d of o.deps || []) {
+          assert.ok(stage.objectives.some((o2) => o2.id === d), def.id + ' dep ' + d);
+        }
+      }
+    }
+    assert.ok(def.aceBonus && def.aceBonus.length >= 1 && def.aceBonus.length <= 3,
+      def.id + ' aceBonus 1-3');
+    for (const b of def.aceBonus) {
+      assert.ok(b.id && b.desc, def.id + ' bonus fields');
+      parseAceCondition(b.condition); // throws on unknown kinds / missing parameters
+    }
+  }
+  const m14 = M[13];
+  const used = new Set();
+  for (const s of m14.stages) for (const o of s.objectives) used.add(o.type);
+  assert.deepEqual([...used].sort(), TYPES.slice().sort(), 'finale uses all 5 objective types');
+});
+
+test('3B.4 balancing: stage timer budgets bound every mission; M11 fits 6 minutes', () => {
+  const M = missionsData.missions;
+  for (const def of M) {
+    let budget = 0;
+    for (const stage of def.stages) {
+      let maxT = 0;
+      for (const o of stage.objectives) if (o.timer) maxT = Math.max(maxT, o.timer);
+      budget += maxT;
+    }
+    assert.ok(budget >= 300 && budget <= 1440,
+      def.id + ' fail-ceiling budget ' + budget + 's inside the Veteran play window');
+  }
+  const m11 = M[10];
+  assert.equal(m11.recommendedJet, 'sr71', 'Oxcart recommends the Blackbird');
+  assert.ok(JETS.some((j) => j.id === m11.recommendedJet), 'recommended jet is in the roster');
+  assert.equal(m11.stages.length, 1, 'single photo-run stage');
+  const o = m11.stages[0].objectives[0];
+  assert.equal(o.type, 'recon');
+  assert.ok(o.waypoints.length >= 5, 'five camera gates');
+  assert.ok(o.timer <= 360, 'SR-71 photo run inside the 6-minute acceptance window');
+});
+
+test('3B.3 economy: earned Ace Bonuses pay credits on top of the run', () => {
+  const def = { reward: 1000 };
+  assert.equal(creditsForRun(def, { success: true, score: 1000, aceCount: 2 }),
+    1000 + 400 + 100, 'win: reward + 200/ace + 10% score');
+  assert.equal(creditsForRun(def, { success: false, score: 1000, aceCount: 3 }),
+    300 + 50, 'loss: 100/ace + 5% score');
+  assert.equal(creditsForRun(def, { success: true, score: 1000 }), 1000 + 100,
+    'no ace fields -> legacy math unchanged');
+});
+
 
 

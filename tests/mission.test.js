@@ -532,7 +532,10 @@ test('debrief results: success payload, difficulty score multiplier, mission id'
   assert.equal(r.success, true);
   assert.equal(r.difficulty, 2);
   const reward = MISSIONS.find((x) => x.id === 'm1').reward; // data-driven score check
-  assert.equal(r.score, Math.round((reward + r.kills * 25) * 2.0)); // ace multiplier 2.0
+  // Task 3B.3: the Ace Bonus set is active on Ace; this clean fast run earns all 3 of M1's
+  assert.equal(r.aceCount, 3);
+  assert.equal(r.aceBonuses.filter((b) => b.earned).length, 3);
+  assert.equal(r.score, Math.round((reward + r.kills * 25 + r.aceCount * 300) * 2.0));
 });
 
 // ---------------------------------------------------------------------------

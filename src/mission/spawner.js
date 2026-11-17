@@ -156,6 +156,16 @@ export class Spawner {
         this.ents.variant[id] = 3;
         this._register(this._group(a.group, true), id);
         this.protectedIds.push(id);
+      } else if (a.kind === 'ship') {
+        // Phase 3B: protected friendly ship (escort target for M7/M12/M14). Same fail
+        // trigger path as the rig; cruise missiles can target its group by name.
+        snapSurface(this.terrain, out[0], out[2], false, out); // ships want water
+        const id = this.ents.spawn(ENT_TYPE.SHIP, TEAM.PLAYER, out[0], 4, out[2], 0.5, 0, 0,
+          a.radius || SPAWNER_TUNING.SHIP_RADIUS, a.hp || 140);
+        if (id < 0) throw new Error('spawner: world full spawning protected asset');
+        this.ents.variant[id] = 2; // boat hull mesh
+        this._register(this._group(a.group, true), id);
+        this.protectedIds.push(id);
       }
     }
   }

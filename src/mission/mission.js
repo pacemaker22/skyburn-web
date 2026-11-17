@@ -7,6 +7,7 @@
 import { FSMTable, FSM } from '../ai/fsm.js';
 import { Stage } from './stages.js';
 import { OBJ_STATE } from './objectives.js';
+import { AceBonusSet } from './ace.js';
 
 export const MISSION_STATE = {
   NOT_STARTED: 0, STAGE_ACTIVE: 1, SUCCESS: 2, FAILED: 3, COUNT: 4,
@@ -88,6 +89,8 @@ export class Mission {
     this.maxRestores = RESTORES_BY_DIFFICULTY[difficulty];
     this.checkpoint = null;
     this.protectedGroups = (def.assets || []).map((a) => a.group);
+    this.ace = this._makeAce();          // Task 3B.3 (null unless Ace difficulty)
+    this._aceResolved = false;
 
     // preallocated DAG env (groupAlive delegates to the spawner's group registry)
     const spawner = this.spawner;
@@ -143,9 +146,14 @@ export class Mission {
     if (this.stage.complete) {
       const more = this.stageIndex + 1 < this.def.stages.length;
       this.fsm.fire(more ? MISSION_EVENT.ADVANCE : MISSION_EVENT.FINISH, this.ctx);
-      if (more && this.hooks.onMissionEvent) this.hooks.onMissionEvent('stage complete');
+      if (more) {
+        if (this.hooks.onMissionEvent) this.hooks.onMissionEvent('stage complete');
+      } else {
+        this._resolveAce(true); // SUCCESS: complete under_time / cleanliness bonuses
+      }
     } else if (this.stage.failed) {
       this.fsm.fire(MISSION_EVENT.STAGE_FAILED, this.ctx);
+      this._resolveAce(false);  // FAILED: sink all still-ACTIVE bonuses
     }
   }
 
@@ -168,6 +176,7 @@ export class Mission {
     const g = this.spawner.noteKill(victimId);
     if (!g) return null;
     this.kills++;
+    if (this.ace) this.ace.noteKill(this.kills);   // Ace bonus: min_kills conditions
     this.stage.dag.noteGroupDestroyed(g.name);
     if (g.protected) {
       this.stage.dag.failEscortsOf(g.name);
@@ -189,6 +198,30 @@ export class Mission {
     if (this.running) {
       this.fsm.fire(MISSION_EVENT.STAGE_FAILED, this.ctx);
     }
+  }
+
+  // ---- Ace Bonus (Task 3B.3) ----
+  // Event feeds called by main.js (player actions). No-ops on Rookie/Veteran (no set).
+  notePlayerMissileFired() { if (this.ace) this.ace.noteMissileFired(); }
+  notePlayerDamaged() { if (this.ace) this.ace.noteDamageTaken(); }
+
+  // Ace difficulty only, and only when the mission defines bonuses. Hooks bubble the
+  // completion event to main.js (chime + HUD banner) via deps.hooks.onAceBonus.
+  _makeAce() {
+    if (this.difficulty !== 2 || !Array.isArray(this.def.aceBonus) ||
+      this.def.aceBonus.length === 0) return null;
+    const self = this;
+    return new AceBonusSet(this.def.aceBonus, {
+      onAceBonus: (b) => { if (self.hooks.onAceBonus) self.hooks.onAceBonus(b); },
+    });
+  }
+
+  // Resolve the set at mission end (terminal; idempotent). SUCCESS completes the
+  // time/cleanliness bonuses, FAILED sinks them all.
+  _resolveAce(success) {
+    if (!this.ace || this._aceResolved) return;
+    this._aceResolved = true;
+    this.ace.finish(this.timeSec, success);
   }
 
   // ---- Checkpoints (Task 2.7): captured at every stage start ----
@@ -236,6 +269,8 @@ export class Mission {
     this.timeSec = 0;
     this.kills = 0;
     this.restores = 0;
+    this.ace = this._makeAce();     // bonuses re-earnable on a fresh attempt
+    this._aceResolved = false;
     this.start(null);
   }
 
@@ -243,6 +278,7 @@ export class Mission {
   results() {
     const success = this.fsm.state === MISSION_STATE.SUCCESS;
     const mult = DIFF_MULT[this.difficulty];
+    const aceCount = this.ace ? this.ace.completedCount() : 0;
     return {
       missionId: this.def.id,
       title: this.def.title,
@@ -251,7 +287,10 @@ export class Mission {
       timeSec: Math.round(this.timeSec * 10) / 10,
       restores: this.restores,
       difficulty: this.difficulty,
-      score: Math.round((this.def.reward + this.kills * 25) * mult),
+      // Task 3B.3: each earned Ace Bonus adds 300 base score before the difficulty mult.
+      score: Math.round((this.def.reward + this.kills * 25 + aceCount * 300) * mult),
+      aceBonuses: this.ace ? this.ace.list() : [],
+      aceCount,
     };
   }
 }

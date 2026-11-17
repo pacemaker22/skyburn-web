@@ -137,14 +137,14 @@ in vec2 vNdc;
 uniform mat4 uInvVP;
 uniform vec3 uCamPos;
 uniform vec3 uSunDir;
+uniform vec3 uZenith;    // Phase 3B: per-map sky gradient (maps.json atmosphere)
+uniform vec3 uHorizon;
 out vec4 frag;
 void main() {
   vec4 pw = uInvVP * vec4(vNdc, 1.0, 1.0);
   vec3 dir = normalize(pw.xyz / pw.w - uCamPos);
   float up = clamp(dir.y * 1.6 + 0.10, 0.0, 1.0);
-  vec3 horizon = vec3(0.76, 0.84, 0.90);
-  vec3 zenith = vec3(0.20, 0.44, 0.76);
-  vec3 col = mix(horizon, zenith, up);
+  vec3 col = mix(uHorizon, uZenith, up);
   float s = dot(dir, uSunDir);
   float glow = pow(max(s, 0.0), 320.0) * 0.55;
   float disc = smoothstep(0.99955, 0.99988, s);

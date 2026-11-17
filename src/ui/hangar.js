@@ -23,12 +23,16 @@ export function buyJet(saveData, jet) {
   return { ok: true, credits: saveData.credits, ownedJets: saveData.ownedJets.slice() };
 }
 
-// Credits awarded by the debrief (Task 3A.4): full reward + 10% of score on a win,
-// a 5%-of-score consolation on a loss (keeps grinding possible without trivializing).
+// Credits awarded by the debrief (Task 3A.4 + 3B.3): full reward + 200 per earned Ace
+// Bonus + 10% of score on a win; 100 per earned Ace Bonus + a 5%-of-score consolation on
+// a loss (keeps grinding possible without trivializing).
 export function creditsForRun(missionDef, res) {
   if (!res) return 0;
-  if (res.success) return Math.round((missionDef ? missionDef.reward : 0) + res.score * 0.1);
-  return Math.round(res.score * 0.05);
+  const ace = res.aceCount || 0;
+  if (res.success) {
+    return Math.round((missionDef ? missionDef.reward : 0) + ace * 200 + res.score * 0.1);
+  }
+  return Math.round(ace * 100 + res.score * 0.05);
 }
 
 // Stat rows for the detail panel: [label, formatted, bar 0..1]. Bounds chosen so every

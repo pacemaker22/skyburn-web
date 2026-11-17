@@ -45,7 +45,10 @@ export class BriefingScreen {
     q('#bf-title').textContent = def.title.toUpperCase();
     q('#bf-meta').textContent = 'MAP ' + (mapName || def.map).toUpperCase() +
       '  |  DIFFICULTY ' + difficultyLabel + '  |  STAGES ' + def.stages.length +
-      '  |  REWARD ' + def.reward;
+      '  |  REWARD ' + def.reward +
+      (def.recommendedJet ? '  |  AIRCRAFT ' + def.recommendedJet.toUpperCase() : '') +
+      (def.aceBonus && def.aceBonus.length
+        ? '  |  ACE BONUS x' + def.aceBonus.length + ' (hidden until earned)' : '');
     q('#bf-text').textContent = def.briefing || '';
     const list = q('#bf-objectives');
     list.innerHTML = '';

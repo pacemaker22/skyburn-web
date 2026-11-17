@@ -129,6 +129,11 @@ HANDOFF_Phase_2.md
 
 ## Phase 3 - Content (Weeks 9-11)
 
+**Status:** **DONE** - 3A committed `2a5550a`, 3B committed + tagged `v0.4`. 42 jets, 8 maps,
+missions M1-M14 (M11 SR-71 recon, M14 all-types finale), Ace Bonuses on every mission,
+timer budgets test-enforced, procedural music + radio/TTS + volume sliders.
+`npm test` = 108/108 green, dist 0.30 MB.
+
 **Goal:** All jets, all 14 missions, SR-71, Impact Cam polish, audio, balancing. Split Agent A Jets,
 Agent B Missions/Maps, do not edit same files.
 
