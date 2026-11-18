@@ -6,3 +6,5 @@ _*.py
 __pycache__/
 node_modules/
 *.log
+Skyburn-PRD-Design-Planning.md
+Skyburn-PRD-Design-Planning.pdf
