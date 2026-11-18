@@ -92,8 +92,12 @@ export class MissileSystem {
     this.explodeTimer = new Float32Array(this.max); // HIT/MISS/TIMEOUT -> EXPLODE grace
     this._ctxCache = new Array(this.max); // per-slot ctx objects (stable, no per-tick alloc)
     for (let i = 0; i < this.max; i++) {
+      // Phase 4 FIX (found by tests/property.test.js): slot MUST be the cache index.
+      // It was hardcoded to 0, so every onExplode/onFreed routed through slot 0 -
+      // multi-missile salvos detonated at slot 0's position and every recycle freed
+      // slot 0 (duplicate freeList entries + all other slots leaked after ~64 launches).
       this._ctxCache[i] = {
-        sys: this, slot: 0,
+        sys: this, slot: i,
         onExplode() { this.sys._detonate(this.slot); },
         onFreed() { this.sys._recycle(this.slot); },
       };

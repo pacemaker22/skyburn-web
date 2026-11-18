@@ -9,7 +9,9 @@ import { GameLoop, FIXED_DT } from './core/loop.js';
 import { InputSystem, ACTION } from './core/input.js';
 import { AudioSystem } from './core/audio.js';
 import { MusicSystem } from './audio/music.js';
-import { SaveSystem } from './core/save.js';
+import { SaveSystem, defaultSaveData } from './core/save.js';
+import { QualityGovernor } from './core/quality.js';   // Task 4.5: auto render scale
+import { Profiler } from './core/profiler.js';         // Task 4.5: dev timing HUD
 import {
   Renderer, buildShipLod, buildRigLod, buildGroundLod,
 } from './render/renderer.js';
@@ -46,16 +48,20 @@ const SPAWNER_JET_CAP = 24; // mirrors SPAWNER_TUNING.MAX_JETS (scene arrays siz
 // ---- Game FSM (Task 2.6): MENU -> HANGAR -> BRIEFING -> LOADING -> PLAYING -> DEBRIEF ----
 // Exported table builder (like buildMissileTable) so tests/mission.test.js can validate the
 // UI flow structurally: no forbidden jumps (e.g. MENU straight into PLAYING).
+// Phase 4 (Task 4.7): PLAYING <-> PAUSED (PRD Game FSM has PAUSED; no sim step runs there,
+// which structurally guarantees "no damage in PAUSED").
 export const GAME_STATE = {
-  MENU: 0, HANGAR: 1, BRIEFING: 2, LOADING: 3, PLAYING: 4, DEBRIEF: 5, COUNT: 6,
+  MENU: 0, HANGAR: 1, BRIEFING: 2, LOADING: 3, PLAYING: 4, PAUSED: 5, DEBRIEF: 6, COUNT: 7,
 };
-export const GAME_STATE_NAMES = ['MENU', 'HANGAR', 'BRIEFING', 'LOADING', 'PLAYING', 'DEBRIEF'];
+export const GAME_STATE_NAMES =
+  ['MENU', 'HANGAR', 'BRIEFING', 'LOADING', 'PLAYING', 'PAUSED', 'DEBRIEF'];
 export const GAME_EVENT = {
   OPEN_HANGAR: 0, BACK: 1, PICK: 2, LAUNCH: 3, LOADED: 4, ENDED: 5, RETRY: 6, CONTINUE: 7,
-  COUNT: 8,
+  PAUSE: 8, RESUME: 9, COUNT: 10,
 };
 export const GAME_EVENT_NAMES =
-  ['OPEN_HANGAR', 'BACK', 'PICK', 'LAUNCH', 'LOADED', 'ENDED', 'RETRY', 'CONTINUE'];
+  ['OPEN_HANGAR', 'BACK', 'PICK', 'LAUNCH', 'LOADED', 'ENDED', 'RETRY', 'CONTINUE',
+    'PAUSE', 'RESUME'];
 
 export function buildGameTable() {
   const S = GAME_STATE, E = GAME_EVENT;
@@ -68,13 +74,17 @@ export function buildGameTable() {
   t.add(S.BRIEFING, E.LAUNCH, S.LOADING, null, null);
   t.add(S.LOADING, E.LOADED, S.PLAYING, null, null);
   t.add(S.PLAYING, E.ENDED, S.DEBRIEF, null, null);
+  t.add(S.PLAYING, E.PAUSE, S.PAUSED, null, null);   // Task 4.7: pause freezes the sim step
+  t.add(S.PAUSED, E.RESUME, S.PLAYING, null, null);
   t.add(S.DEBRIEF, E.RETRY, S.LOADING, null, null);
   t.add(S.DEBRIEF, E.CONTINUE, S.MENU, null, null);
   // PRD flow invariant: screens only advance along the defined chain.
   t.validate([
-    [S.MENU, S.PLAYING], [S.MENU, S.DEBRIEF], [S.MENU, S.LOADING],
+    [S.MENU, S.PLAYING], [S.MENU, S.DEBRIEF], [S.MENU, S.LOADING], [S.MENU, S.PAUSED],
     [S.BRIEFING, S.PLAYING], [S.HANGAR, S.PLAYING], [S.PLAYING, S.MENU],
-    [S.PLAYING, S.HANGAR], [S.DEBRIEF, S.PLAYING],
+    [S.PLAYING, S.HANGAR], [S.DEBRIEF, S.PLAYING], [S.PAUSED, S.MENU],
+    [S.PAUSED, S.HANGAR], [S.PAUSED, S.BRIEFING], [S.PAUSED, S.LOADING],
+    [S.PAUSED, S.DEBRIEF], [S.DEBRIEF, S.PAUSED],
   ]);
   return t;
 }
@@ -115,6 +125,38 @@ function pickDifficulty() {
 async function boot() {
   const canvas = $('gl');
   if (!canvas) { showError('Missing #gl canvas'); return; }
+
+  // ---- persistence FIRST (TDZ hardening + never-crash save guard) ----
+  // saveData must exist before ANY boot code reads it. The old Phase-4 regression class:
+  // consumers (audio/input/HUD palette wiring) reading saveData above its declaration,
+  // crashing boot with "Cannot access 'saveData' before initialization". The block now
+  // sits at the very top of boot(), ahead of every consumer. Failure-proof by design:
+  // save.load() already merges defaults and swallows backend errors, but if anything
+  // else goes wrong (blocked storage, corrupt record, future reorder) saveData falls
+  // back to the canonical fresh save and boot continues - it never crashes on save state.
+  const save = new SaveSystem();
+  let saveData = null;
+  try {
+    saveData = await save.load();
+  } catch (e) {
+    saveData = null; // backend threw (IndexedDB blocked / private mode): use defaults
+  }
+  if (!saveData) {
+    // Fresh save via defaultSaveData() in core/save.js. Do NOT inline a partial object
+    // here (e.g. { credits, unlocked, settings } only): boot closures write the full
+    // shape - saveData.results[...] (debrief), saveData.unlocked.push(...), checkpoint.
+    saveData = defaultSaveData();
+  }
+  async function persistSave() {
+    try { await save.save(saveData); } catch (e) { /* never block gameplay on IO */ }
+  }
+
+  // Mission HUD is created FIRST, before anything that can touch missionHud runs.
+  // TDZ fix: the palette/reduced-motion wiring further down used missionHud while its
+  // old declaration sat below it in this scope, crashing boot with "Cannot access
+  // 'missionHud' before initialization". Stays inside boot() (not module scope) because
+  // Node tests import this module headlessly and have no `document` there.
+  const missionHud = new MissionHud(document);
 
   // Task 0.7: WASM vec3 stub (falls back to JS with the same API when no toolchain artifact)
   initVec3().catch(() => {});
@@ -159,22 +201,25 @@ async function boot() {
   renderer.setShipMeshes([buildShipLod(), buildRigLod()]);
   renderer.setGroundMesh(buildGroundLod());
 
+  // (saveData/persistSave are set up at the very top of boot() - see the persistence
+  // block there. The consumers below only read it, after the declaration.)
   const audio = new AudioSystem({});
   const music = new MusicSystem(audio);   // Task 3B.5: procedural music loop
   audio.setVolumes(saveData.settings);    // menu sliders (persisted)
   music.setVolume(saveData.settings && saveData.settings.music !== undefined
     ? saveData.settings.music : 0.5);
-  const input = new InputSystem({ onFirstInput: () => {
-    if (audio.init()) { audio.resume(); music.start(); }
-  } });
+  const input = new InputSystem({
+    onFirstInput: () => {
+      if (audio.init()) { audio.resume(); music.start(); }
+    },
+    // Task 4.6: persisted pad settings (deadzone/sensitivity/rumble/remap)
+    padSettings: saveData.settings && saveData.settings.gamepad,
+  });
   input.attach(canvas, window);
+  input.attachPadHotPlug(window);   // Task 4.6: hot-plug (connect/disconnect)
+  missionHud.setPalette(saveData.settings && saveData.settings.colorblind);
+  missionHud.reducedMotion = !!(saveData.settings && saveData.settings.reducedMotion);
 
-  // ---- persistence (Tasks 2.6 + 2.7): progress, unlocks, results, checkpoints ----
-  const save = new SaveSystem();
-  const saveData = await save.load();
-  async function persistSave() {
-    try { await save.save(saveData); } catch (e) { /* never block gameplay on IO */ }
-  }
   let difficulty = saveData.difficulty !== undefined ? saveData.difficulty : pickDifficulty();
 
   // ---- world + screens state ----
@@ -182,7 +227,13 @@ async function boot() {
   let pendingLaunch = null;  // { free, missionDef, map, difficulty, jetData }
   const game = new FSM(buildGameTable(), GAME_STATE.MENU, null);
 
-  const missionHud = new MissionHud(document);
+  // (missionHud is created at the top of boot() - see the TDZ fix note there.)
+  // Task 4.7: pause overlay (shown while the Game FSM is in PAUSED; the sim is frozen)
+  const pauseEl = document.createElement('div');
+  pauseEl.id = 'pause-overlay';
+  pauseEl.textContent = 'PAUSED - ESC / P TO RESUME';
+  pauseEl.hidden = true;
+  document.body.appendChild(pauseEl);
   const briefing = new BriefingScreen(document, {
     onLaunch: () => fireGame(GAME_EVENT.LAUNCH),
     onBack: () => fireGame(GAME_EVENT.BACK),
@@ -204,7 +255,8 @@ async function boot() {
     else if (prev === GAME_STATE.HANGAR) hangarHide();
     else if (prev === GAME_STATE.BRIEFING) briefing.hide();
     else if (prev === GAME_STATE.DEBRIEF) debrief.hide();
-    else if (prev === GAME_STATE.PLAYING) missionHud.hide();
+    // Task 4.7: PLAYING -> PAUSED keeps the HUD up (the world stays on screen, frozen)
+    else if (prev === GAME_STATE.PLAYING && next !== GAME_STATE.PAUSED) missionHud.hide();
 
     if (next === GAME_STATE.MENU) {
       world = null; // session over; free the sim until the next launch
@@ -222,8 +274,11 @@ async function boot() {
       setTimeout(() => fireGame(GAME_EVENT.LOADED), 350); // brief LOADING beat
     } else if (next === GAME_STATE.PLAYING) {
       missionHud.show();
+      pauseEl.hidden = true;
       audio.resume();
       music.start();   // Task 3B.5 (idempotent)
+    } else if (next === GAME_STATE.PAUSED) {
+      pauseEl.hidden = false;   // Task 4.7: frozen world + overlay; no sim step
     } else if (next === GAME_STATE.DEBRIEF) {
       const res = world ? world.takeResults() : null;
       if (res && res.missionId) {
@@ -344,6 +399,8 @@ async function boot() {
             if (nowMs - lastRadioMs < 3000) return;
             lastRadioMs = nowMs;
             audio.radio(msg);
+            // Task 4.7: subtitles for radio chatter (persisted toggle)
+            if (saveData.settings && saveData.settings.subtitles) missionHud.subtitle(msg);
           },
           onAceBonus: (b) => {
             // Task 3B.3: the ONLY in-flight ace marker is the completion banner + chime
@@ -477,6 +534,7 @@ async function boot() {
     function applyDamage(id, dmg, hx, hy, hz) {
       const killed = ents.damage(id, dmg);
       if (id === playerId && mission) mission.notePlayerDamaged(); // Task 3B.3 ace feed
+      if (id === playerId) input.rumble(killed ? 1.0 : 0.6, killed ? 350 : 180); // Task 4.6
       if (killed) {
         particles.burstExplosion(ents.pos[id * 3], ents.pos[id * 3 + 1], ents.pos[id * 3 + 2]);
         audio.explosion();
@@ -486,8 +544,10 @@ async function boot() {
       }
     }
 
-    // guns: one shared hitscan system; per-entity cooldowns live in gunCd
-    const guns = new GunSystem(0xC0FFEE);
+    // guns: one shared hitscan system; per-entity cooldowns live in gunCd.
+    // collision (created above with the ents registry) is INJECTED here - GunSystem owns
+    // the reference and never reads ents.collision (the ents object has no such property).
+    const guns = new GunSystem(0xC0FFEE, collision);
     guns.hooks.onHit = (hitId, dmg, px, py, pz, shooterId) => {
       applyDamage(hitId, dmg, px, py, pz);
     };
@@ -574,6 +634,7 @@ async function boot() {
         view.fx, view.fy, view.fz, launchSpeed, tgtId);
       if (mid >= 0) {
         audio.missileLaunch();
+        input.rumble(0.45, 120); // Task 4.6: launch feedback (no-op without a pad)
         if (shooterEntId === playerId && mission) mission.notePlayerMissileFired(); // 3B.3
         return true;
       }
@@ -1223,8 +1284,9 @@ async function boot() {
         hud.lat.textContent = 'input latency ' + latEma.toFixed(1) + ' ms';
         hud.scale.textContent = 'res scale ' + renderer.renderScale.toFixed(2) +
           ' (' + canvas.width + 'x' + canvas.height + ')';
-        const mem = (typeof performance !== 'undefined' && performance.memory) ? performance.memory : null;
-        hud.heap.textContent = mem ? 'heap ' + (mem.usedJSHeapSize / 1048576).toFixed(1) + ' MB' : 'heap n/a';
+        // Phase 4 (Task 4.5): profiler line (named step/render timers + counters)
+        if (hud.heap) profiler.count('missiles', missiles.activeCount());
+        if (hud.heap) hud.heap.textContent = 'profiler ' + profiler.line();
         hud.spd.textContent = 'speed ' + (playerFlight.speed * 3.6).toFixed(0) + ' km/h' +
           (ents.gearDown[playerId] ? ' + gear' : '');
         hud.alt.textContent = 'alt ' + ents.pos[playerId * 3 + 1].toFixed(0) + ' m';
@@ -1376,6 +1438,98 @@ async function boot() {
       volRow.appendChild(wrap);
     });
     menuEl.querySelector('.sb-panel').appendChild(volRow);
+
+    // ---- Phase 4 (Tasks 4.6 + 4.7): gamepad + accessibility settings (persisted) ----
+    const gp = settings.gamepad || (settings.gamepad =
+      { deadzone: 0.12, sensitivity: 1.0, rumble: true, remap: {} });
+    const mkToggle = (label, get, set) => {
+      const b = document.createElement('button');
+      b.className = 'sb-btn';
+      const paint = () => { b.textContent = label + ': ' + (get() ? 'ON' : 'OFF'); };
+      b.addEventListener('click', () => { set(!get()); paint(); void persistSave(); });
+      paint();
+      return b;
+    };
+    const gpRow = document.createElement('div');
+    gpRow.className = 'sb-vol-row';
+    gpRow.appendChild(mkToggle('RUMBLE', () => gp.rumble !== false, (v) => {
+      gp.rumble = v;
+      input.setPadSettings(gp);
+    }));
+    [['deadzone', 'DZ', 0, 0.3, 0.01], ['sensitivity', 'SENS', 0.5, 2, 0.1]].forEach(
+      ([key, label, min, max, step]) => {
+        const wrap = document.createElement('div');
+        wrap.className = 'sb-vol';
+        const name = document.createElement('span');
+        name.textContent = label;
+        const slider = document.createElement('input');
+        slider.type = 'range';
+        slider.min = String(min);
+        slider.max = String(max);
+        slider.step = String(step);
+        slider.value = String(typeof gp[key] === 'number' ? gp[key] : key === 'deadzone' ? 0.12 : 1);
+        slider.addEventListener('input', () => {
+          gp[key] = parseFloat(slider.value);
+          input.setPadSettings(gp);
+          void persistSave();
+        });
+        wrap.appendChild(name);
+        wrap.appendChild(slider);
+        gpRow.appendChild(wrap);
+      });
+    // face-button remap cycles (persisted; standard mapping is the fallback)
+    const CYCLE = [0, 1, 2, 3, 4, 5, 10];            // A B X Y LB RB L3
+    const CYCLE_NAMES = ['A', 'B', 'X', 'Y', 'LB', 'RB', 'L3'];
+    const PB_DEFAULT = { fireMissile: 0, flare: 1, switchWeapon: 2, targetNext: 3 };
+    Object.keys(PB_DEFAULT).forEach((key) => {
+      const label = { fireMissile: 'MISSILE', flare: 'FLARE',
+        switchWeapon: 'WEAPON', targetNext: 'TARGET' }[key];
+      const b = document.createElement('button');
+      b.className = 'sb-btn';
+      const paint = () => {
+        const cur = gp.remap[key] !== undefined ? gp.remap[key] : PB_DEFAULT[key];
+        const idx = CYCLE.indexOf(cur);
+        b.textContent = label + ': ' + (idx >= 0 ? CYCLE_NAMES[idx] : '?');
+      };
+      b.addEventListener('click', () => {
+        const cur = gp.remap[key] !== undefined ? CYCLE.indexOf(gp.remap[key])
+          : CYCLE.indexOf(PB_DEFAULT[key]);
+        const next = CYCLE[(cur + 1) % CYCLE.length];
+        if (next === PB_DEFAULT[key]) delete gp.remap[key];  // keep the save minimal
+        else gp.remap[key] = next;
+        input.setPadSettings(gp);
+        paint();
+        void persistSave();
+      });
+      paint();
+      gpRow.appendChild(b);
+    });
+    menuEl.querySelector('.sb-panel').appendChild(gpRow);
+
+    const accRow = document.createElement('div');
+    accRow.className = 'sb-vol-row';
+    const PAL_MODES = ['normal', 'protan', 'deutan', 'tritan'];
+    const palB = document.createElement('button');
+    palB.className = 'sb-btn';
+    const paintPal = () => {
+      palB.textContent = 'HUD COLORS: ' + (settings.colorblind || 'normal').toUpperCase();
+    };
+    palB.addEventListener('click', () => {
+      const cur = PAL_MODES.indexOf(settings.colorblind || 'normal');
+      settings.colorblind = PAL_MODES[(cur + 1) % PAL_MODES.length];
+      missionHud.setPalette(settings.colorblind);
+      paintPal();
+      void persistSave();
+    });
+    paintPal();
+    accRow.appendChild(palB);
+    accRow.appendChild(mkToggle('SUBTITLES', () => settings.subtitles !== false,
+      (v) => { settings.subtitles = v; }));
+    accRow.appendChild(mkToggle('REDUCED MOTION', () => !!settings.reducedMotion,
+      (v) => { settings.reducedMotion = v; missionHud.reducedMotion = v; }));
+    accRow.appendChild(mkToggle('AUTO QUALITY', () => settings.autoQuality !== false,
+      (v) => { settings.autoQuality = v; quality.enabled = v; }));
+    menuEl.querySelector('.sb-panel').appendChild(accRow);
   }
   function menuShow() { menuEl.hidden = false; refreshMenu(); }
   function menuHide() { menuEl.hidden = true; }
@@ -1422,19 +1576,36 @@ async function boot() {
   }
 
   // ---- main loop driver: sim only in PLAYING; attract render behind every screen ----
+  // Phase 4 (Task 4.7): PAUSED renders the frozen world (no sim step runs, which
+  // structurally guarantees the PRD "no damage in PAUSED" invariant).
+  // Phase 4 (Task 4.5): profiler timers around step/render + auto quality governor
+  // (fps < 50 for 5 s -> render scale 0.8 then 0.6; user toggle persisted).
+  const quality = new QualityGovernor((scale) => renderer.setRenderScale(scale));
+  quality.enabled = !(saveData.settings && saveData.settings.autoQuality === false);
+  const profiler = new Profiler();
   let loopStats = null;
   const loop = new GameLoop({
     step: (dt) => {
       if (game.state === GAME_STATE.PLAYING && world) {
+        profiler.begin('step');
         world.step(dt);
+        profiler.end('step');
         if (world.isEnded()) fireGame(GAME_EVENT.ENDED);
       }
     },
     render: (alpha) => {
       const now = performance.now();
       music.tick();   // Task 3B.5: lookahead scheduler (cheap; no-op when not playing)
-      if (game.state === GAME_STATE.PLAYING && world) world.render(alpha, now);
-      else renderAttract(now);
+      if ((game.state === GAME_STATE.PLAYING || game.state === GAME_STATE.PAUSED) && world) {
+        profiler.begin('render');
+        world.render(alpha, now);
+        profiler.end('render');
+        profiler.count('draws', renderer.drawCalls);
+        profiler.count('ents', world.ents.activeCount());
+      } else {
+        renderAttract(now);
+      }
+      if (quality.enabled) quality.update(loop.stats.frameMs / 1000, loop.stats.fps);
     },
   });
   loopStats = loop.stats;
@@ -1450,6 +1621,12 @@ async function boot() {
   window.addEventListener('keydown', (e) => {
     if (e.code === 'BracketLeft') renderer.setRenderScale(renderer.renderScale - 0.1);
     if (e.code === 'BracketRight') renderer.setRenderScale(renderer.renderScale + 0.1);
+    // Task 4.7: pause/resume (PRD Game FSM PLAYING <-> PAUSED). No sim step runs in
+    // PAUSED - the loop only steps in PLAYING - so no damage can occur while paused.
+    if (e.code === 'Escape' || e.code === 'KeyP') {
+      if (game.state === GAME_STATE.PLAYING) fireGame(GAME_EVENT.PAUSE);
+      else if (game.state === GAME_STATE.PAUSED) fireGame(GAME_EVENT.RESUME);
+    }
   });
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) audio.suspend();

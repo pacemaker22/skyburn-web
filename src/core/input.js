@@ -94,6 +94,14 @@ export class InputSystem {
     this.virtualGamepad = null;  // tests inject state here
     this._gpOut = new Array(4);  // [rollAxis, pitchAxis, throttleTrigger, buttonsRef]
     this._stickOut = new Float32Array(2);
+    // Phase 4 (Task 4.6): pad settings (persisted in save.settings.gamepad) -
+    // deadzone, sensitivity, rumble toggle and a per-action button remap.
+    this.onPadChange = (opts && opts.onPadChange) || null;
+    this.dz = DEADZONE;
+    this.sensitivity = 1;
+    this.rumbleEnabled = true;
+    this.PB = null;              // action name -> pad button index (built from settings)
+    this.setPadSettings((opts && opts.padSettings) || null);
     // input latency proof (PRD: respond < 50 ms)
     this.lastEventTimeMs = -1;
     this._hadEvent = false;
@@ -189,6 +197,69 @@ export class InputSystem {
 
   setVirtualGamepad(v) { this.virtualGamepad = v; }
 
+  // ---- Phase 4 (Task 4.6): pad settings, hot-plug, rumble ----
+
+  // Apply user pad settings (save.settings.gamepad). Rebuilds the button bindings:
+  // remap entries override the standard-mapping defaults; out-of-range entries fall
+  // back to the default so a corrupt save can never break the pad.
+  setPadSettings(s) {
+    const g = s || {};
+    this.dz = (typeof g.deadzone === 'number' && g.deadzone >= 0 && g.deadzone <= 0.5)
+      ? g.deadzone : DEADZONE;
+    this.sensitivity = (typeof g.sensitivity === 'number' && g.sensitivity > 0)
+      ? Math.min(2, g.sensitivity) : 1;
+    this.rumbleEnabled = g.rumble !== false;
+    const R = (g.remap && typeof g.remap === 'object') ? g.remap : {};
+    const def = (name, d) =>
+      (typeof R[name] === 'number' && R[name] >= 0 && R[name] <= 17) ? R[name] : d;
+    this.PB = {
+      fireGun: def('fireGun', GAMEPAD_MAP.BUTTON_RT),
+      fireMissile: def('fireMissile', GAMEPAD_MAP.BUTTON_A),
+      flare: def('flare', GAMEPAD_MAP.BUTTON_B),
+      switchWeapon: def('switchWeapon', GAMEPAD_MAP.BUTTON_X),
+      targetNext: def('targetNext', GAMEPAD_MAP.BUTTON_Y),
+      airbrake: def('airbrake', GAMEPAD_MAP.BUTTON_LT),
+      afterburner: def('afterburner', GAMEPAD_MAP.BUTTON_L3),
+    };
+  }
+
+  // Hot-plug wiring (browser only; called from main alongside attach()).
+  // gamepadconnected also counts as first input (unlocks audio like a keypress).
+  attachPadHotPlug(win) {
+    const w = win || (typeof window !== 'undefined' ? window : null);
+    if (!w || !w.addEventListener) return;
+    w.addEventListener('gamepadconnected', (e) => {
+      if (this.gamepadIndex < 0) this.gamepadIndex = e.gamepad.index;
+      this._markEvent(undefined);
+      this._notifyFirstInput();
+      if (this.onPadChange) this.onPadChange(true, e.gamepad && e.gamepad.id);
+    });
+    w.addEventListener('gamepaddisconnected', (e) => {
+      if (this.gamepadIndex === e.gamepad.index) {
+        this.gamepadIndex = -1;
+        this.virtualGamepad = null;
+      }
+      if (this.onPadChange) this.onPadChange(false, e.gamepad && e.gamepad.id);
+    });
+  }
+
+  // Dual-rumble, best effort (Task 4.6): no-op headlessly, on pads without the
+  // vibration API, or when the user disabled rumble. strength 0..1, ms <= 500.
+  rumble(strength, ms) {
+    if (!this.rumbleEnabled) return;
+    if (typeof navigator === 'undefined' || !navigator.getGamepads) return;
+    const pad = navigator.getGamepads()[this.gamepadIndex];
+    const act = pad && pad.vibrationActuator;
+    if (!act || !act.playEffect) return;
+    try {
+      const s = Math.max(0, Math.min(1, strength));
+      act.playEffect('dual-rumble', {
+        duration: Math.max(0, Math.min(500, ms | 0)),
+        strongMagnitude: s, weakMagnitude: s * 0.7,
+      });
+    } catch (e) { void e; /* unsupported effect - ignore */ }
+  }
+
   // ---- Per-tick sampling (PRD invariant: exactly once per physics tick) ----
   sample() {
     const a = this.analog, b = this.buttons, e = this.edges, prev = this.prevButtons;
@@ -224,17 +295,21 @@ export class InputSystem {
       const [lx, ly, triggers, padButtons] = gp;
       // sticks win over mouse when pushed beyond deadzone ("two schemes, equal")
       if (lx !== 0 || ly !== 0) {
-        a[ACTION.ROLL] = lx;
-        a[ACTION.PITCH] = ly;
+        // Task 4.6: user sensitivity scales the deadzone-corrected stick output
+        a[ACTION.ROLL] = clamp(lx * this.sensitivity, -1, 1);
+        a[ACTION.PITCH] = clamp(ly * this.sensitivity, -1, 1);
       }
       throttleAxis += triggers;
-      if (padButtons[GAMEPAD_MAP.BUTTON_RT]) b[ACTION.FIRE_GUN] = 1;
-      if (padButtons[GAMEPAD_MAP.BUTTON_A]) b[ACTION.FIRE_MISSILE] = 1;
-      if (padButtons[GAMEPAD_MAP.BUTTON_B]) b[ACTION.FLARE] = 1;
-      if (padButtons[GAMEPAD_MAP.BUTTON_X]) b[ACTION.SWITCH_WEAPON] = 1;
-      if (padButtons[GAMEPAD_MAP.BUTTON_Y]) b[ACTION.TARGET_NEXT] = 1;
-      if (padButtons[GAMEPAD_MAP.BUTTON_L3] || (trigVal(padButtons, GAMEPAD_MAP.BUTTON_LT) > 0.9 && trigVal(padButtons, GAMEPAD_MAP.BUTTON_RT) > 0.9)) b[ACTION.AFTERBURNER] = 1;
-      if (trigVal(padButtons, GAMEPAD_MAP.BUTTON_LT) > 0.5) b[ACTION.AIRBRAKE] = 1;
+      // Task 4.6: buttons go through the persisted remap bindings (this.PB)
+      if (padButtons[this.PB.fireGun]) b[ACTION.FIRE_GUN] = 1;
+      if (padButtons[this.PB.fireMissile]) b[ACTION.FIRE_MISSILE] = 1;
+      if (padButtons[this.PB.flare]) b[ACTION.FLARE] = 1;
+      if (padButtons[this.PB.switchWeapon]) b[ACTION.SWITCH_WEAPON] = 1;
+      if (padButtons[this.PB.targetNext]) b[ACTION.TARGET_NEXT] = 1;
+      if (padButtons[this.PB.afterburner] ||
+        (trigVal(padButtons, this.PB.airbrake) > 0.9 &&
+          trigVal(padButtons, this.PB.fireGun) > 0.9)) b[ACTION.AFTERBURNER] = 1;
+      if (trigVal(padButtons, this.PB.airbrake) > 0.5) b[ACTION.AIRBRAKE] = 1;
     }
 
     a[ACTION.THROTTLE] = clamp(throttleAxis, -1, 1);
@@ -272,7 +347,8 @@ export class InputSystem {
       if (!axes) this.gamepadIndex = -1;
     }
     if (!axes) return null;
-    deadzoneRadial(axes[GAMEPAD_MAP.AXIS_LEFT_X], axes[GAMEPAD_MAP.AXIS_LEFT_Y], DEADZONE, this._stickOut);
+    deadzoneRadial(axes[GAMEPAD_MAP.AXIS_LEFT_X], axes[GAMEPAD_MAP.AXIS_LEFT_Y],
+      this.dz, this._stickOut);
     this._gpOut[0] = this._stickOut[0];
     this._gpOut[1] = -this._stickOut[1]; // stick up = nose up
     this._gpOut[2] = (btnVal(buttons, GAMEPAD_MAP.BUTTON_RB) - btnVal(buttons, GAMEPAD_MAP.BUTTON_LB))

@@ -71,6 +71,39 @@
     display: none; color: #ff5252; font-size: 17px; letter-spacing: 2px;
     text-shadow: 0 0 8px rgba(255, 60, 60, 0.7);
   }
+  /* ---- Phase 4 (Task 4.7): radio subtitles + pause overlay + 720p/4K overflow ---- */
+  #hud-subtitle {
+    position: absolute; bottom: 64px; left: 50%; transform: translateX(-50%);
+    display: none; max-width: min(760px, 86vw); text-align: center;
+    color: #e8f2ff; font-size: 15px; letter-spacing: 0.5px;
+    background: rgba(6, 12, 20, 0.72); border: 1px solid #23445c; border-radius: 4px;
+    padding: 6px 14px;
+  }
+  #pause-overlay {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    background: rgba(4, 8, 14, 0.55); pointer-events: none; z-index: 9;
+    font-family: Consolas, 'Courier New', monospace;
+    color: #ffd54f; font-size: 26px; letter-spacing: 4px;
+    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.9);
+  }
+  @media (max-height: 760px) {
+    /* 720p-and-smaller: tighter panels so nothing overflows the viewport */
+    .sb-panel { padding: 14px 18px; max-height: 94vh; }
+    .sb-panel h1 { font-size: 21px; }
+    .sb-menu-list { gap: 6px; margin-top: 8px; }
+    #hud-subtitle { bottom: 52px; font-size: 13px; }
+  }
+  @media (min-width: 2200px) and (min-height: 1150px) {
+    /* 4K: scale UI type up so HUD/panel text stays readable at distance */
+    #hud { font-size: 19px; }
+    .sb-panel { font-size: 20px; width: min(1020px, 92vw); }
+    .sb-panel h1 { font-size: 38px; }
+    .sb-meta, .sb-sub { font-size: 18px; }
+    .sb-btn { font-size: 18px; }
+    #hud-banner { font-size: 34px; }
+    #hud-subtitle { font-size: 22px; }
+    #pause-overlay { font-size: 40px; }
+  }
   .skyburn-screen {
     position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
     background: rgba(4, 8, 14, 0.82); pointer-events: auto; z-index: 10;

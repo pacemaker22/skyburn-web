@@ -149,7 +149,7 @@ test('guns: 600 RPM cadence, tracer pool cap and expiry', () => {
   const { ents } = makeWorld(0);
   const target = ents.spawn(ENT_TYPE.JET, TEAM.ENEMY, 0, -9999, 0, 0, 0, 0, 9, 100); // out of reach
   void target;
-  const guns = new GunSystem(42);
+  const guns = new GunSystem(42, ents.collision);
   const shooter = makeShooter(ents, 0, TEAM.PLAYER, 0, 500, 0, 0); // firing along -z, no targets
   const dt = 1 / 120;
   let cooldown = 0;
@@ -177,7 +177,7 @@ test('guns: hitscan damages the nearest enemy with distance falloff; tracers exp
   const far = ents.spawn(ENT_TYPE.JET, TEAM.ENEMY, 0, 500, -2200, 0, 0, 0, 9, 100);
   ents.collision = new CollisionWorld(ents.max);
   ents.collision.rebuild(ents);
-  const guns = new GunSystem(7);
+  const guns = new GunSystem(7, ents.collision);
   const dmgLog = [];
   guns.hooks.onHit = (hitId, dmg) => dmgLog.push([hitId, dmg]);
   const shooter = makeShooter(ents, ids[0] ?? 99, TEAM.PLAYER, 0, 500, 0, 0);
@@ -522,7 +522,7 @@ test('combat systems steady state does not allocate (guns, missiles, particles, 
   const { ents, shooter, target } = makeTargetWorld();
   ents.vel[target * 3] = 150; ents.speed[target] = 150;
   const ms = new MissileSystem(3, { onExplode: () => {}, flareActive: null });
-  const guns = new GunSystem(3);
+  const guns = new GunSystem(3, ents.collision);
   const particles = new ParticleSystem(1000, 3);
   guns.hooks.onMuzzle = (x, y, z, dx, dy, dz) => particles.muzzleFlash(x, y, z, dx, dy, dz);
   guns.hooks.onHit = () => {};

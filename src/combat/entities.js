@@ -131,4 +131,23 @@ export class Pool {
     this.freeTop = this.max;
     for (let i = 0; i < this.max; i++) this.freeList[i] = this.max - 1 - i;
   }
+
+  // Phase 4 (Task 4.2): structural integrity check - see invariants.auditPool().
+  // Returns null when consistent, else a description. Dev/tests only.
+  audit() {
+    const seen = new Uint8Array(this.max);
+    for (let i = 0; i < this.freeTop; i++) {
+      const id = this.freeList[i];
+      if (!(id >= 0 && id < this.max)) return 'freeList[' + i + '] out of range: ' + id;
+      if (seen[id]) return 'slot ' + id + ' duplicated in freeList';
+      seen[id] = 1;
+    }
+    if (this.freeTop < 0 || this.freeTop > this.max) {
+      return 'freeTop ' + this.freeTop + ' outside [0,' + this.max + ']';
+    }
+    if (this.freeTop + this.active !== this.max) {
+      return 'free ' + this.freeTop + ' + active ' + this.active + ' != max ' + this.max;
+    }
+    return null;
+  }
 }

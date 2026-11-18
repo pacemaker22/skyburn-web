@@ -408,6 +408,7 @@ export class Renderer {
     gl.uniform3f(sky.u.uSunDir, this._sun[0], this._sun[1], this._sun[2]);
     gl.uniform3f(sky.u.uZenith, this._zenith[0], this._zenith[1], this._zenith[2]);
     gl.uniform3f(sky.u.uHorizon, this._horizon[0], this._horizon[1], this._horizon[2]);
+    if (sky.u.uTime !== undefined) gl.uniform1f(sky.u.uTime, timeSec); // Phase 4 clouds drift
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.bindVertexArray(null);
     gl.enable(gl.DEPTH_TEST);

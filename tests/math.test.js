@@ -55,6 +55,55 @@ test('vec3 backend init falls back to JS with the same API when no wasm artifact
   assert.deepEqual([...out], [3, 3, 3]);
 });
 
+test('no wasm artifact in repo: zero fetch attempts, silent JS fallback, one log line', async () => {
+  // Fresh module instance (cache-busted specifier) so init state starts clean.
+  const mod = await import('../src/wasm/vec3.js?probe=no-artifact');
+  const realFetch = globalThis.fetch;
+  const realInfo = console.info;
+  const realError = console.error;
+  const realWarn = console.warn;
+  let fetchCalls = 0;
+  const infos = [];
+  const noise = [];
+  globalThis.fetch = (...args) => { fetchCalls += 1; return realFetch(...args); };
+  console.info = (...args) => { infos.push(args.join(' ')); };
+  console.error = (...args) => { noise.push(args.join(' ')); };
+  console.warn = (...args) => { noise.push(args.join(' ')); };
+  try {
+    const backend = await mod.initVec3();
+    assert.equal(backend.name, 'js-fallback', 'JS fallback is the active backend');
+    assert.equal(mod.getVec3(), backend, 'getVec3() agrees with initVec3()');
+    // The full API must work on the fallback - the game must not break without wasm.
+    const out = new Float32Array(3);
+    backend.add([1, 2, 3], [4, 5, 6], out);
+    assert.deepEqual([...out], [5, 7, 9]);
+    backend.sub([4, 5, 6], [1, 2, 3], out);
+    assert.deepEqual([...out], [3, 3, 3]);
+    backend.scale([1, 2, 3], 2, out);
+    assert.deepEqual([...out], [2, 4, 6]);
+    backend.cross([1, 0, 0], [0, 1, 0], out);
+    assert.deepEqual([...out], [0, 0, 1]);
+    assert.equal(backend.dot([1, 2, 3], [4, 5, 6]), 32);
+    assert.equal(backend.length([3, 4, 0]), 5);
+    assert.equal(backend.normalize([0, 0, 0], out), 0); // zero vector is safe
+    assert.deepEqual([...out], [0, 0, 0]);
+    // vec3.wasm does not exist in this repo: there must be NO fetch attempt (hence no 404
+    // network noise) and no console.error/console.warn spam.
+    assert.equal(fetchCalls, 0, 'must not attempt to fetch the missing vec3.wasm');
+    assert.deepEqual(noise, [], 'no console.error/console.warn allowed');
+    // Exactly one backend log line, in the required format.
+    assert.deepEqual(
+      infos.filter((l) => l.includes('vec3 backend')),
+      ['[SKYBURN] vec3 backend: JS'],
+    );
+  } finally {
+    globalThis.fetch = realFetch;
+    console.info = realInfo;
+    console.error = realError;
+    console.warn = realWarn;
+  }
+});
+
 // ---- mat4 (Task 0.4 camera math) ----
 
 test('mat4 identity and multiply', () => {

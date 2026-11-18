@@ -19,7 +19,20 @@ export function defaultSaveData() {
     credits: 1500,                 // Task 3A.4: earned from debrief, spent on jets
     ownedJets: ['f16c', 'mig29'],  // Task 3A.4: jets the hangar may select (starter pair)
     // Task 3B.5: volume sliders (master/SFX on the audio graph, music on the MusicSystem).
-    settings: { master: 0.22, music: 0.5, sfx: 0.9 },
+    // Phase 4 (Tasks 4.6/4.7): pad + accessibility settings, all persisted here.
+    settings: {
+      master: 0.22, music: 0.5, sfx: 0.9,
+      colorblind: 'normal',        // normal | protan | deutan | tritan (HUD palette)
+      subtitles: true,             // radio chatter text line
+      reducedMotion: false,        // no impact-cam slow-mo cut, no warning blink
+      autoQuality: true,           // fps<50 for 5s -> render scale 0.8 then 0.6
+      gamepad: {
+        deadzone: 0.12,            // PRD default
+        sensitivity: 1.0,          // stick output multiplier (0 < s <= 2)
+        rumble: true,              // dual-rumble on hits/launches
+        remap: {},                 // action name -> pad button index ({} = standard map)
+      },
+    },
   };
 }
 
@@ -38,7 +51,19 @@ export function mergeSave(loaded) {
   if (typeof loaded.credits === 'number' && isFinite(loaded.credits)) out.credits = loaded.credits;
   if (Array.isArray(loaded.ownedJets)) out.ownedJets = loaded.ownedJets.slice();
   if (loaded.settings && typeof loaded.settings === 'object') {
-    out.settings = Object.assign({}, base.settings, loaded.settings);
+    // Phase 4: deep-merge the nested gamepad object so older saves (no gamepad key)
+    // and partial saves (e.g. only deadzone) both get full defaults.
+    // NOTE: sBase must be captured from a FRESH defaultSaveData() BEFORE the assign
+    // below - out === base, and Object.assign copies loaded.settings.gamepad by
+    // REFERENCE over the default object, which would alias gBase to the loaded one
+    // and silently drop untouched defaults (deadzone/rumble).
+    const sBase = defaultSaveData().settings;
+    out.settings = Object.assign({}, sBase, loaded.settings);
+    const gBase = sBase.gamepad;
+    const gLoaded = (loaded.settings.gamepad && typeof loaded.settings.gamepad === 'object')
+      ? loaded.settings.gamepad : {};
+    out.settings.gamepad = Object.assign({}, gBase, gLoaded);
+    out.settings.gamepad.remap = Object.assign({}, gBase.remap, gLoaded.remap || {});
   }
   return out;
 }

@@ -112,10 +112,20 @@ uniform vec3 uFogColor;
 out vec4 frag;
 void main() {
   vec3 n = normalize(vNormal);
+  vec3 v = normalize(uCamPos - vWorld);
   float diff = max(dot(n, uSunDir), 0.0);
   // cool ambient from sky, warm from sun
   vec3 amb = vColor * vec3(0.16, 0.20, 0.27);
   vec3 col = amb + vColor * diff * vec3(1.05, 1.0, 0.92);
+  // Phase 4 (Task 4.5 polish): Blinn-Phong sun highlight + rim light + tonemap.
+  // Kept subtle so the Phase 3B look is preserved (deferred polish, not a new feature).
+  vec3 hv = normalize(uSunDir + v);
+  float spec = pow(max(dot(n, hv), 0.0), 48.0) * 0.30 * diff;
+  col += vec3(1.0, 0.97, 0.90) * spec;
+  float rim = pow(1.0 - max(dot(n, v), 0.0), 3.0);
+  col += vec3(0.42, 0.56, 0.80) * rim * 0.16;
+  // gentle filmic curve + gamma-ish contrast: keeps highlights from clipping hard
+  col = col * (1.0 + col * 0.15) / (1.0 + col * 0.35);
   float d = length(vWorld - uCamPos);
   float fog = 1.0 - exp(-d * d * 6e-9);
   frag = vec4(mix(col, uFogColor, fog), 1.0);
@@ -139,7 +149,22 @@ uniform vec3 uCamPos;
 uniform vec3 uSunDir;
 uniform vec3 uZenith;    // Phase 3B: per-map sky gradient (maps.json atmosphere)
 uniform vec3 uHorizon;
+uniform float uTime;     // Phase 4 (Task 4.5): cloud drift
 out vec4 frag;
+// cheap 2D value noise (original) - cloud shapes only, no texture fetches
+float hash12(vec2 p) {
+  return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+}
+float vnoise(vec2 p) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  float a = hash12(i);
+  float b = hash12(i + vec2(1.0, 0.0));
+  float c = hash12(i + vec2(0.0, 1.0));
+  float d = hash12(i + vec2(1.0, 1.0));
+  return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
 void main() {
   vec4 pw = uInvVP * vec4(vNdc, 1.0, 1.0);
   vec3 dir = normalize(pw.xyz / pw.w - uCamPos);
@@ -150,6 +175,19 @@ void main() {
   float disc = smoothstep(0.99955, 0.99988, s);
   col += vec3(1.0, 0.92, 0.75) * glow;
   col = mix(col, vec3(1.0, 0.97, 0.88), disc);
+  // Phase 4 (Task 4.5): procedural cloud layer (the polish deferred from Phase 3B).
+  // Ray-projected onto a virtual plane 1800 m up: billboard-soft cumulus shapes from
+  // 3 octaves of value noise drifting slowly eastward. Fades out at the horizon.
+  if (dir.y > 0.015) {
+    vec2 cp = uCamPos.xz * 0.00055 + dir.xz / dir.y * 0.33;
+    cp.x += uTime * 0.004;
+    float n = vnoise(cp * 2.1) * 0.55 + vnoise(cp * 4.7 + 11.3) * 0.30
+            + vnoise(cp * 9.3 + 27.7) * 0.15;
+    float cov = smoothstep(0.58, 0.78, n) * smoothstep(0.015, 0.16, dir.y);
+    float lit = 0.55 + 0.45 * clamp(s * 0.5 + 0.5, 0.0, 1.0);
+    vec3 cloudCol = mix(vec3(0.62, 0.66, 0.74), vec3(1.0, 0.99, 0.96), lit);
+    col = mix(col, cloudCol, cov * 0.85);
+  }
   frag = vec4(col, 1.0);
 }`;
 

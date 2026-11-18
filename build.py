@@ -3,8 +3,9 @@
 # - Minifies all JS with a conservative, syntax-preserving scanner (comments + indentation).
 # - Emits dist/ (index.html with prod flag + minified sources, same relative module paths).
 # - Enforces the Phase 0 acceptance criterion: dist/ under 2 MB.
-# - Compiles src/wasm/vec3.c -> src/wasm/vec3.wasm when a wasm32-capable clang exists;
-#   otherwise vec3.js uses its JS fallback with the same API (Task 0.7).
+# - Compiles src/wasm/vec3.c -> src/wasm/vec3.wasm when a wasm32-capable clang exists and
+#   arms the wasm fetch in the dist copy of vec3.js; otherwise vec3.js never fetches the
+#   missing artifact (no 404 noise) and silently uses its JS fallback with the same API.
 # - Rejects forbidden framework imports (PRD: no React/Vue/Three.js/Babylon/engine).
 
 import os
@@ -196,6 +197,18 @@ def main():
                     src = f.read()
                 check_forbidden_imports(rel_path, src)
                 mini = minify_js(src)
+                # Arm the wasm fetch in the dist copy ONLY when the artifact really exists:
+                # the source tree keeps VEC3_WASM_AVAILABLE = false, so dev serving (raw src,
+                # no compiled vec3.wasm) performs zero fetch attempts and never logs a 404.
+                if compiled and rel_path == os.path.join('src', 'wasm', 'vec3.js'):
+                    armed = mini.replace('VEC3_WASM_AVAILABLE = false',
+                                         'VEC3_WASM_AVAILABLE = true')
+                    if armed != mini:
+                        mini = armed
+                        print('[build] armed wasm load in dist/src/wasm/vec3.js')
+                    else:
+                        print('[build] WARNING: VEC3_WASM_AVAILABLE gate not found in'
+                              ' dist/src/wasm/vec3.js; dist stays on the JS fallback')
                 with open(dest_path, 'w', encoding='utf-8') as f:
                     f.write(mini)
                 files_out.append((rel_path, os.path.getsize(dest_path)))
@@ -211,7 +224,8 @@ def main():
     for path, size in sorted(files_out):
         print('  %-44s %8d B' % (path, size))
     print('[build] total: %d bytes (%.2f MB)' % (total, total / 1e6))
-    print('[build] wasm backend: %s' % ('compiled vec3.wasm' if compiled else 'JS fallback (same API)'))
+    print('[build] wasm backend: %s' % ('vec3.wasm (dist fetch armed)' if compiled
+                                        else 'JS fallback (no fetch attempt, no 404)'))
     if total > MAX_DIST_BYTES:
         raise SystemExit('[build] FAIL: dist/ is %d bytes, Phase 0 limit is %d bytes'
                          % (total, MAX_DIST_BYTES))

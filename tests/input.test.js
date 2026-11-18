@@ -114,3 +114,67 @@ test('deadzone helpers: radial scaling math', () => {
   const v = applyDz(-0.56, 0.12);
   assert.ok(Math.abs(v + (0.56 - 0.12) / 0.88) < 1e-6);
 });
+
+// ---- Phase 4 (Task 4.6): pad settings - sensitivity, deadzone, remap, hot-plug ----
+
+test('pad settings: user deadzone and sensitivity apply to stick sampling', () => {
+  const i = new InputSystem({ padSettings: { deadzone: 0.3, sensitivity: 1.5 } });
+  i.setVirtualGamepad({ axes: [0.2, 0, 0, 0], buttons: [] });
+  let s = i.sample();
+  assert.equal(s.getAxis(ACTION.ROLL), 0, '0.2 < dz 0.3 -> inside deadzone');
+  i.setVirtualGamepad({ axes: [1.0, 0, 0, 0], buttons: [] });
+  s = i.sample();
+  const base = (1 - 0.3) / (1 - 0.3); // rescale with dz 0.3 -> 1.0
+  assert.ok(Math.abs(s.getAxis(ACTION.ROLL) - Math.min(1, base * 1.5)) < 1e-6,
+    'sensitivity scales the rescaled output, got ' + s.getAxis(ACTION.ROLL));
+  // out-of-range settings fall back to the PRD defaults (corrupt save protection)
+  const j = new InputSystem({ padSettings: { deadzone: 9, sensitivity: -2 } });
+  assert.equal(j.dz, DEADZONE);
+  assert.equal(j.sensitivity, 1);
+});
+
+test('pad remap: persisted bindings override the standard map; defaults survive garbage', () => {
+  const i = new InputSystem({
+    padSettings: { remap: { fireMissile: 5, flare: 0, switchWeapon: 99 } },
+  });
+  // RB (5) = missile (remapped), A (0) = flare (remapped)
+  i.setVirtualGamepad({
+    axes: [0, 0, 0, 0],
+    buttons: { 5: { value: 1, pressed: true }, 0: { value: 1, pressed: true } },
+  });
+  let s = i.sample();
+  assert.equal(s.isDown(ACTION.FIRE_MISSILE), true, 'fireMissile remapped to RB (5)');
+  assert.equal(s.isDown(ACTION.FLARE), true, 'flare remapped to A (0)');
+  assert.equal(s.isDown(ACTION.FIRE_GUN), false, 'RT not remapped, not pressed');
+  // garbage remap entry (99) falls back to the default binding (X = 2)
+  i.setVirtualGamepad({ axes: [0, 0, 0, 0], buttons: { 2: { value: 1, pressed: true } } });
+  s = i.sample();
+  assert.equal(s.isDown(ACTION.SWITCH_WEAPON), true,
+    'switchWeapon: 99 is out of range -> falls back to default X (2)');
+});
+
+test('pad hot-plug: connect/disconnect callbacks fire and index stays fresh', () => {
+  const i = new InputSystem({});
+  const handlers = {};
+  const fakeWin = {
+    addEventListener: (name, fn) => { handlers[name] = fn; },
+  };
+  const events = [];
+  i.onPadChange = (connected, id) => events.push([connected, id]);
+  i.attachPadHotPlug(fakeWin);
+  assert.ok(handlers.gamepadconnected && handlers.gamepaddisconnected,
+    'both listeners registered');
+  handlers.gamepadconnected({ gamepad: { index: 2, id: 'Xbox Pad' } });
+  assert.equal(i.gamepadIndex, 2, 'connect claims the free slot');
+  assert.deepEqual(events[0], [true, 'Xbox Pad']);
+  handlers.gamepaddisconnected({ gamepad: { index: 2, id: 'Xbox Pad' } });
+  assert.equal(i.gamepadIndex, -1, 'disconnect releases the slot');
+  assert.deepEqual(events[1], [false, 'Xbox Pad']);
+});
+
+test('rumble: no-throw headlessly (no navigator vibration API in Node)', () => {
+  const i = new InputSystem({});
+  i.rumble(0.5, 100);   // must be a silent no-op without a pad
+  i.rumble(2, -5);      // out-of-range values clamp inside
+  assert.ok(true);
+});

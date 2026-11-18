@@ -58,3 +58,46 @@ export function assertActiveCount(tag, activeCount, maxCount) {
     fail(tag, 'activeCount ' + activeCount + ' outside [0,' + maxCount + ']');
   }
 }
+
+// ---- Phase 4 additions (Task 4.2): health/fuel ranges + pool integrity ----
+
+// PRD invariant: health 0-100, fuel >= 0 (any bounded resource lives in [lo, hi]).
+export function assertRange(tag, v, lo, hi) {
+  if (!invariantsEnabled()) return;
+  if (!Number.isFinite(v)) { fail(tag, 'non-finite range value: ' + v); return; }
+  if (v < lo || v > hi) {
+    fail(tag, 'value ' + v + ' outside [' + lo + ',' + hi + ']');
+  }
+}
+
+// Cheap per-tick pool check (O(1)): active never escapes [0, max]. Pairs with
+// auditPool() below, which is O(max) and meant for tests/dev tools only.
+export function assertPool(tag, pool) {
+  if (!invariantsEnabled()) return;
+  if (!pool || typeof pool.active !== 'number') { fail(tag, 'no pool'); return; }
+  if (pool.active < 0 || pool.active > pool.max) {
+    fail(tag, 'pool.active ' + pool.active + ' outside [0,' + pool.max + ']');
+  }
+}
+
+// O(max) structural integrity audit: every slot sits in exactly one of
+// {active, freeList}, freeList holds no duplicates or out-of-range ids, and
+// freeTop matches the free count. Returns null when consistent, else the
+// first problem as a string. Dev/test-time only (allocates one Uint8Array).
+export function auditPool(pool) {
+  if (!pool || !pool.freeList) return 'no pool';
+  const seen = new Uint8Array(pool.max);
+  for (let i = 0; i < pool.freeTop; i++) {
+    const id = pool.freeList[i];
+    if (!(id >= 0 && id < pool.max)) return 'freeList[' + i + '] out of range: ' + id;
+    if (seen[id]) return 'slot ' + id + ' duplicated in freeList';
+    seen[id] = 1;
+  }
+  if (pool.freeTop < 0 || pool.freeTop > pool.max) {
+    return 'freeTop ' + pool.freeTop + ' outside [0,' + pool.max + ']';
+  }
+  if (pool.freeTop + pool.active !== pool.max) {
+    return 'free ' + pool.freeTop + ' + active ' + pool.active + ' != max ' + pool.max;
+  }
+  return null;
+}

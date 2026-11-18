@@ -210,8 +210,12 @@ export class Spawner {
     e.armor[id] = jetData.armor || 1;               // Task 3A.3 balance armor
     e.variant[id] = jetData._shapeIdx !== undefined ? jetData._shapeIdx : 0; // kitbash shape
     this._seed = (this._seed + 0x9E37) | 0;
+    // Phase 4 (Task 4.4 determinism fix): AI decisions previously fell back to
+    // Math.random (opts.rng was never supplied), breaking seeded replay. Inject a
+    // seeded PRNG derived from the per-jet seed so replays hash identically.
     const ai = new EnemyAI(e, this.missiles, id, { id: this.playerId },
-      spec.difficulty !== undefined ? spec.difficulty : this.difficulty, this._seed, {});
+      spec.difficulty !== undefined ? spec.difficulty : this.difficulty, this._seed,
+      { rng: mulberry32(this._seed >>> 0) });
     ai.missiles = this.missiles; // threat scan needs the live system
     this._register(gi, id);
     this.jetIds.push(id);

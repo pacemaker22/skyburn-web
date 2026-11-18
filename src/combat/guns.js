@@ -18,7 +18,10 @@ export const GUN_TUNING = {
 };
 
 export class GunSystem {
-  constructor(seed) {
+  // collision: the world's CollisionWorld, injected by main (created BEFORE the gun system).
+  // Guns never read ents.collision - the ents registry carries no back-reference to it.
+  constructor(seed, collision) {
+    this.collision = collision || null; // null => _fireOne bails silently (main always injects)
     this.pool = new Pool(GUN_TUNING.MAX_TRACERS);
     this.pos0 = new Float32Array(GUN_TUNING.MAX_TRACERS * 3);
     this.pos1 = new Float32Array(GUN_TUNING.MAX_TRACERS * 3);
@@ -45,6 +48,7 @@ export class GunSystem {
   }
 
   _fireOne(shooter) {
+    if (!this.collision) return false; // no collision world injected: skip silently, never crash
     const ents = shooter.world;
     // spread: two uniform samples -> cone offset (deterministic per seed)
     const a = this.rng() * Math.PI * 2;
@@ -61,7 +65,7 @@ export class GunSystem {
     const hit = this._hit;
     hit.id = -1;
     const enemyTeam = shooter.team === 0 ? 1 : 0;
-    const found = ents.collision.segmentQuery(ents, shooter.noseX, shooter.noseY, shooter.noseZ,
+    const found = this.collision.segmentQuery(ents, shooter.noseX, shooter.noseY, shooter.noseZ,
       endX, endY, endZ, shooter.id, enemyTeam, hit);
     let ex = endX, ey = endY, ez = endZ;
     if (found) {
