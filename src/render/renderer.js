@@ -4,7 +4,7 @@
 
 import {
   TERRAIN_VS, TERRAIN_FS, OCEAN_VS, OCEAN_FS, JET_VS, JET_FS, SKY_VS, SKY_FS,
-  PARTICLE_VS, PARTICLE_FS, LINE_VS, LINE_FS,
+  PARTICLE_VS, PARTICLE_FS, LINE_VS, LINE_FS, CLOUD_VS, CLOUD_FS, OUTLINE_FS,
 } from './shaders/basic.glsl.js';
 
 // ---- Column-major mat4 helpers (exported for unit tests; all out-param, no allocation) ----
@@ -124,10 +124,12 @@ export function mat4FromYPR(out, yaw, pitch, roll, x, y, z) {
 
 // ---- Renderer ----
 
-const FOG_COLOR = new Float32Array([0.76, 0.84, 0.90]);
+// Graphics-pass palette (art direction lock): fog = horizon color, deep sky blue zenith,
+// warm directional sun shared by every surface shader.
+const FOG_COLOR = new Float32Array([0.74, 0.85, 0.95]);
 const SUN_DIR = new Float32Array([0.42, 0.55, -0.72]); // normalized below
-const ZENITH = new Float32Array([0.20, 0.44, 0.76]);
-const HORIZON = new Float32Array([0.76, 0.84, 0.90]);
+const ZENITH = new Float32Array([0.13, 0.35, 0.70]);
+const HORIZON = new Float32Array([0.74, 0.85, 0.95]);
 
 export class Renderer {
   constructor(canvas) {
@@ -161,6 +163,8 @@ export class Renderer {
     this._progSky = this._compile(SKY_VS, SKY_FS);
     this._progParticles = this._compile(PARTICLE_VS, PARTICLE_FS); // Phase 1
     this._progLine = this._compile(LINE_VS, LINE_FS);              // Phase 1 (tracers)
+    this._progCloud = this._compile(CLOUD_VS, CLOUD_FS);           // graphics pass (billboards)
+    this._progOutline = this._compile(JET_VS, OUTLINE_FS);         // graphics pass (silhouettes)
 
     // normalize sun dir
     const s = SUN_DIR;
@@ -187,6 +191,9 @@ export class Renderer {
     this._carrier = null; // Phase 1: {vao, idxCount}
     this._particles = null; // Phase 1: {vao, vbo, max}
     this._lines = null;     // Phase 1: {vao, vbo, maxVerts}
+    this._clouds = null;    // graphics pass: {vao, vbo, count}
+    this._missile = null;   // graphics pass: {vao, idxCount}
+    this._model2 = new Float32Array(16); // outline-pass model matrix (scaled shell)
   }
 
   _compile(vsSrc, fsSrc) {
@@ -326,6 +333,34 @@ export class Renderer {
     this._ground = this._uploadInterleaved(mesh.verts, mesh.idx, this.gl.UNSIGNED_SHORT, mesh.stride);
   }
 
+  // Graphics pass: guided-missile mesh (drawn bright orange via the jet program's uEmissive).
+  setMissileMesh(mesh) {
+    this._missile = this._uploadInterleaved(mesh.verts, mesh.idx,
+      this.gl.UNSIGNED_SHORT, mesh.stride);
+  }
+
+  // Graphics pass: instanced cloud billboards. data = Float32Array(count * 5), layout
+  // [x, y, z, size(m), seed] stride 20 bytes. Uploaded once at boot (never per frame).
+  setClouds(data, count) {
+    const gl = this.gl;
+    const vao = gl.createVertexArray();
+    gl.bindVertexArray(vao);
+    const vbo = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+    gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(0); // aInstPos
+    gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 20, 0);
+    gl.vertexAttribDivisor(0, 1);
+    gl.enableVertexAttribArray(1); // aInstSize
+    gl.vertexAttribPointer(1, 1, gl.FLOAT, false, 20, 12);
+    gl.vertexAttribDivisor(1, 1);
+    gl.enableVertexAttribArray(2); // aInstSeed
+    gl.vertexAttribPointer(2, 1, gl.FLOAT, false, 20, 16);
+    gl.vertexAttribDivisor(2, 1);
+    gl.bindVertexArray(null);
+    this._clouds = { vao, vbo, count };
+  }
+
   // Phase 1: particle pool binding - one dynamic VBO holding the system's staging layout
   // [x,y,z,size,r,g,b,alpha] (8 floats/point). Updated per frame with bufferSubData(srcOffset,
   // length) - no view allocation, no re-upload of unused tail.
@@ -380,6 +415,11 @@ export class Renderer {
 
   setRenderScale(s) {
     this.renderScale = Math.min(1, Math.max(0.4, s));
+  }
+
+  // Live VFX particle count (perf budget check: must stay <= 500 active).
+  particleCount() {
+    return this._particles ? this._particles.sys.activeCount() : 0;
   }
 
   // One frame: sky -> terrain -> ocean -> carrier -> jets -> particles -> tracers.
@@ -445,6 +485,27 @@ export class Renderer {
       this.triangles += this._ocean.idxCount / 3;
     }
 
+    // --- graphics pass: instanced cloud billboards (depth-tested, no depth write) ---
+    if (this._clouds && this._clouds.count > 0) {
+      const c = this._progCloud;
+      gl.useProgram(c.prog);
+      gl.bindVertexArray(this._clouds.vao);
+      gl.uniformMatrix4fv(c.u.uViewProj, false, this._viewProj);
+      gl.uniform3f(c.u.uRight, this._view[0], this._view[4], this._view[8]);
+      gl.uniform3f(c.u.uUp, this._view[1], this._view[5], this._view[9]);
+      gl.uniform3f(c.u.uCamPos, camPos[0], camPos[1], camPos[2]);
+      gl.uniform3f(c.u.uFogColor, this._fog[0], this._fog[1], this._fog[2]);
+      gl.depthMask(false);
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+      gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, this._clouds.count);
+      gl.disable(gl.BLEND);
+      gl.depthMask(true);
+      gl.bindVertexArray(null);
+      this.drawCalls++;
+      this.triangles += this._clouds.count * 2;
+    }
+
     // --- carrier Nemesis (Task 1.7): yaw-only model matrix, drawn with the jet program ---
     if (this._carrier) {
       mat4FromYPR(this._model, scene.carrierYaw, 0, 0, scene.carrierX, scene.carrierY, scene.carrierZ);
@@ -504,6 +565,7 @@ export class Renderer {
     // --- jets with per-shape LOD sets picked by variant + distance (Tasks 0.6 + 3A.2) ---
     if (this._jetLodSets) {
       const j = this._progJet;
+      const ol = this._progOutline;
       gl.useProgram(j.prog);
       const n = scene.jetCount;
       for (let i = 0; i < n; i++) {
@@ -522,7 +584,53 @@ export class Renderer {
         gl.drawElements(gl.TRIANGLES, mesh.idxCount, gl.UNSIGNED_SHORT, 0);
         this.drawCalls++;
         this.triangles += mesh.idxCount / 3;
+        // graphics pass: dark silhouette outline (inverted hull) inside 4.5 km - readability
+        // rule #1: enemy planes visible at 2 km against sky AND ground.
+        if (d < 4500) {
+          mat4FromYPR(this._model2, scene.jetRot[i * 3], scene.jetRot[i * 3 + 1],
+            scene.jetRot[i * 3 + 2], scene.jetPos[i * 3], scene.jetPos[i * 3 + 1],
+            scene.jetPos[i * 3 + 2]);
+          for (let m = 0; m < 12; m++) this._model2[m] *= 1.045; // scale shell about the origin
+          gl.useProgram(ol.prog);
+          gl.bindVertexArray(mesh.vao);
+          gl.uniformMatrix4fv(ol.u.uViewProj, false, this._viewProj);
+          gl.uniformMatrix4fv(ol.u.uModel, false, this._model2);
+          gl.uniform3f(ol.u.uCamPos, camPos[0], camPos[1], camPos[2]);
+          gl.uniform3f(ol.u.uFogColor, this._fog[0], this._fog[1], this._fog[2]);
+          gl.enable(gl.CULL_FACE);
+          gl.cullFace(gl.FRONT);
+          gl.depthMask(false);
+          gl.enable(gl.BLEND);
+          gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+          gl.drawElements(gl.TRIANGLES, mesh.idxCount, gl.UNSIGNED_SHORT, 0);
+          gl.disable(gl.BLEND);
+          gl.depthMask(true);
+          gl.disable(gl.CULL_FACE);
+          this.drawCalls++;
+        }
       }
+      gl.bindVertexArray(null);
+    }
+
+    // --- graphics pass: guided missiles as bright orange bodies (unlit emissive boost) ---
+    if (this._missile && scene.missileCount > 0) {
+      const j = this._progJet;
+      gl.useProgram(j.prog);
+      gl.uniform1f(j.u.uEmissive, 0.9);
+      for (let i = 0; i < scene.missileCount; i++) {
+        mat4FromYPR(this._model, scene.missileRot[i * 2], scene.missileRot[i * 2 + 1], 0,
+          scene.missilePos[i * 3], scene.missilePos[i * 3 + 1], scene.missilePos[i * 3 + 2]);
+        gl.bindVertexArray(this._missile.vao);
+        gl.uniformMatrix4fv(j.u.uViewProj, false, this._viewProj);
+        gl.uniformMatrix4fv(j.u.uModel, false, this._model);
+        gl.uniform3f(j.u.uSunDir, this._sun[0], this._sun[1], this._sun[2]);
+        gl.uniform3f(j.u.uCamPos, camPos[0], camPos[1], camPos[2]);
+        gl.uniform3f(j.u.uFogColor, this._fog[0], this._fog[1], this._fog[2]);
+        gl.drawElements(gl.TRIANGLES, this._missile.idxCount, gl.UNSIGNED_SHORT, 0);
+        this.drawCalls++;
+        this.triangles += this._missile.idxCount / 3;
+      }
+      gl.uniform1f(j.u.uEmissive, 0.0); // reset: the jet program is shared across frames
       gl.bindVertexArray(null);
     }
     // --- particles (Task 1.8): one VBO, two blend ranges (alpha kinds, then additive) ---

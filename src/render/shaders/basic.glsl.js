@@ -1,6 +1,18 @@
-// Skyburn Phase 0 - GLSL ES 3.00 shaders as strings (PRD: /src/render/shaders/ - GLSL as strings).
-// All shaders are original. Sky gradient + sun disc, heightmap terrain, procedural ocean waves,
-// Lambert jet material. Fog shared: exp2-style, tuned for multi-km view distances.
+// Skyburn Phase 4 graphics pass - GLSL ES 3.00 shaders as strings (PRD: /src/render/shaders/).
+// All shaders are original. Art direction lock (stylized realistic): deep sky blue zenith ->
+// light blue-white horizon, warm sun, white clouds, dark slate terrain, orange explosions.
+// Fog is exp2-style, tuned for multi-km view distances, and always targets the horizon color.
+// Every surface passes through the same ACES-fit tone map + slight saturation so the horizon
+// seam between sky and fogged terrain stays invisible.
+
+// ---- shared fragment grading: simple ACES fit + gentle saturation (applied last) ----
+const GRADE_GLSL = `
+vec3 sbGrade(vec3 col) {
+  col *= 1.15;                                   // exposure before the film curve
+  col = clamp((col * (2.51 * col + 0.03)) / (col * (2.43 * col + 0.59) + 0.14), 0.0, 1.0);
+  float lum = dot(col, vec3(0.2126, 0.7152, 0.0722));
+  return mix(vec3(lum), col, 1.10);              // slight saturation boost
+}`;
 
 export const TERRAIN_VS = `#version 300 es
 precision highp float;
@@ -27,13 +39,17 @@ uniform vec3 uSunDir;
 uniform vec3 uCamPos;
 uniform vec3 uFogColor;
 out vec4 frag;
+${GRADE_GLSL}
 void main() {
   vec3 n = normalize(vNormal);
   float diff = max(dot(n, uSunDir), 0.0);
-  vec3 col = vColor * (0.34 + 0.78 * diff);
+  // Same directional sun as every object: warm sunlight + cool blue sky ambient (no flat white).
+  vec3 sun = vec3(1.06, 0.99, 0.88);
+  vec3 skyAmb = vec3(0.30, 0.36, 0.46);
+  vec3 col = vColor * (skyAmb + sun * diff);
   float d = length(vWorld - uCamPos);
   float fog = 1.0 - exp(-d * d * 6e-9);
-  frag = vec4(mix(col, uFogColor, fog), 1.0);
+  frag = vec4(sbGrade(mix(col, uFogColor, fog)), 1.0);
 }`;
 
 export const OCEAN_VS = `#version 300 es
@@ -68,19 +84,22 @@ uniform vec3 uSunDir;
 uniform vec3 uCamPos;
 uniform vec3 uFogColor;
 out vec4 frag;
+${GRADE_GLSL}
 void main() {
   vec3 n = normalize(vNormal);
   vec3 v = normalize(uCamPos - vWorld);
   float fres = pow(1.0 - max(dot(n, v), 0.0), 3.0);
-  vec3 deep = vec3(0.016, 0.086, 0.150);
-  vec3 shallow = vec3(0.05, 0.22, 0.30);
+  vec3 deep = vec3(0.012, 0.080, 0.160);
+  vec3 shallow = vec3(0.040, 0.200, 0.300);
   vec3 col = mix(deep, shallow, fres * 0.65);
+  // Sun specular reflection: tight glitter core + broad warm path (art direction #7).
   vec3 hv = normalize(uSunDir + v);
-  float spec = pow(max(dot(n, hv), 0.0), 220.0);
-  col += vec3(1.0, 0.95, 0.82) * spec * 1.4;
+  float specT = pow(max(dot(n, hv), 0.0), 260.0);
+  float specB = pow(max(dot(n, hv), 0.0), 28.0) * 0.10;
+  col += vec3(1.0, 0.93, 0.78) * (specT * 1.6 + specB);
   float d = length(vWorld - uCamPos);
   float fog = 1.0 - exp(-d * d * 6e-9);
-  frag = vec4(mix(col, uFogColor, fog), 1.0);
+  frag = vec4(sbGrade(mix(col, uFogColor, fog)), 1.0);
 }`;
 
 export const JET_VS = `#version 300 es
@@ -109,26 +128,27 @@ in vec3 vWorld;
 uniform vec3 uSunDir;
 uniform vec3 uCamPos;
 uniform vec3 uFogColor;
+uniform float uEmissive;   // graphics pass: unlit boost (missiles draw bright orange); default 0
 out vec4 frag;
+${GRADE_GLSL}
 void main() {
   vec3 n = normalize(vNormal);
   vec3 v = normalize(uCamPos - vWorld);
   float diff = max(dot(n, uSunDir), 0.0);
   // cool ambient from sky, warm from sun
-  vec3 amb = vColor * vec3(0.16, 0.20, 0.27);
-  vec3 col = amb + vColor * diff * vec3(1.05, 1.0, 0.92);
-  // Phase 4 (Task 4.5 polish): Blinn-Phong sun highlight + rim light + tonemap.
-  // Kept subtle so the Phase 3B look is preserved (deferred polish, not a new feature).
+  vec3 amb = vColor * vec3(0.18, 0.22, 0.30);
+  vec3 col = amb + vColor * diff * vec3(1.06, 1.0, 0.90);
+  // Blinn-Phong sun highlight (subtle, keeps the Phase 3B look)
   vec3 hv = normalize(uSunDir + v);
   float spec = pow(max(dot(n, hv), 0.0), 48.0) * 0.30 * diff;
   col += vec3(1.0, 0.97, 0.90) * spec;
-  float rim = pow(1.0 - max(dot(n, v), 0.0), 3.0);
-  col += vec3(0.42, 0.56, 0.80) * rim * 0.16;
-  // gentle filmic curve + gamma-ish contrast: keeps highlights from clipping hard
-  col = col * (1.0 + col * 0.15) / (1.0 + col * 0.35);
+  // readability rule #1: darken the silhouette rim so jets read against sky AND ground
+  float rim = pow(1.0 - max(dot(n, v), 0.0), 2.5);
+  col *= 1.0 - 0.30 * rim;
+  col += vColor * uEmissive;   // bright (unlit) bodies: guided missiles
   float d = length(vWorld - uCamPos);
   float fog = 1.0 - exp(-d * d * 6e-9);
-  frag = vec4(mix(col, uFogColor, fog), 1.0);
+  frag = vec4(sbGrade(mix(col, uFogColor, fog)), 1.0);
 }`;
 
 export const SKY_VS = `#version 300 es
@@ -151,6 +171,7 @@ uniform vec3 uZenith;    // Phase 3B: per-map sky gradient (maps.json atmosphere
 uniform vec3 uHorizon;
 uniform float uTime;     // Phase 4 (Task 4.5): cloud drift
 out vec4 frag;
+${GRADE_GLSL}
 // cheap 2D value noise (original) - cloud shapes only, no texture fetches
 float hash12(vec2 p) {
   return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -168,27 +189,27 @@ float vnoise(vec2 p) {
 void main() {
   vec4 pw = uInvVP * vec4(vNdc, 1.0, 1.0);
   vec3 dir = normalize(pw.xyz / pw.w - uCamPos);
-  float up = clamp(dir.y * 1.6 + 0.10, 0.0, 1.0);
-  vec3 col = mix(uHorizon, uZenith, up);
+  float up = clamp(dir.y * 1.7 + 0.12, 0.0, 1.0);
+  vec3 col = mix(uHorizon, uZenith, pow(up, 0.9));
   float s = dot(dir, uSunDir);
-  float glow = pow(max(s, 0.0), 320.0) * 0.55;
-  float disc = smoothstep(0.99955, 0.99988, s);
-  col += vec3(1.0, 0.92, 0.75) * glow;
-  col = mix(col, vec3(1.0, 0.97, 0.88), disc);
-  // Phase 4 (Task 4.5): procedural cloud layer (the polish deferred from Phase 3B).
-  // Ray-projected onto a virtual plane 1800 m up: billboard-soft cumulus shapes from
-  // 3 octaves of value noise drifting slowly eastward. Fades out at the horizon.
-  if (dir.y > 0.015) {
+  // warm yellow sun: broad halo + tight disc
+  float glow = pow(max(s, 0.0), 200.0) * 0.50;
+  float disc = smoothstep(0.99958, 0.99988, s);
+  col += vec3(1.0, 0.86, 0.55) * glow;
+  col = mix(col, vec3(1.0, 0.97, 0.86), disc);
+  // High-altitude wisp layer only - the main cumulus clouds are instanced billboards
+  // (renderer cloud pass). Ray-projected onto a virtual plane 1800 m up, drifting eastward.
+  if (dir.y > 0.02) {
     vec2 cp = uCamPos.xz * 0.00055 + dir.xz / dir.y * 0.33;
     cp.x += uTime * 0.004;
     float n = vnoise(cp * 2.1) * 0.55 + vnoise(cp * 4.7 + 11.3) * 0.30
             + vnoise(cp * 9.3 + 27.7) * 0.15;
-    float cov = smoothstep(0.58, 0.78, n) * smoothstep(0.015, 0.16, dir.y);
+    float cov = smoothstep(0.66, 0.82, n) * smoothstep(0.02, 0.18, dir.y);
     float lit = 0.55 + 0.45 * clamp(s * 0.5 + 0.5, 0.0, 1.0);
-    vec3 cloudCol = mix(vec3(0.62, 0.66, 0.74), vec3(1.0, 0.99, 0.96), lit);
-    col = mix(col, cloudCol, cov * 0.85);
+    vec3 cloudCol = mix(vec3(0.66, 0.70, 0.78), vec3(1.0, 0.99, 0.96), lit);
+    col = mix(col, cloudCol, cov * 0.55);
   }
-  frag = vec4(col, 1.0);
+  frag = vec4(sbGrade(col), 1.0);
 }`;
 
 // ---- Phase 1: GPU particles (gl.POINTS round sprites) + tracer lines ----
@@ -243,4 +264,73 @@ in vec4 vColor;
 out vec4 frag;
 void main() {
   frag = vColor;
+}`;
+
+// ---- Graphics pass: instanced cloud billboards (30-50 soft white sprites, one draw) ----
+// Four corners come from gl_VertexID (no per-vertex buffer); per-instance data arrives via
+// divisor-1 attributes: [center xyz (3f), size (1f), seed (1f)] stride 20 bytes.
+
+export const CLOUD_VS = `#version 300 es
+precision highp float;
+in vec3 aInstPos;    // instance center (world m)
+in float aInstSize;  // billboard radius (m)
+in float aInstSeed;  // per-instance variation [0,1)
+uniform mat4 uViewProj;
+uniform vec3 uRight; // camera right (billboard axis 1)
+uniform vec3 uUp;    // camera up (billboard axis 2)
+out vec2 vUV;
+out vec3 vWorld;
+out float vSeed;
+const vec2 C[4] = vec2[4](vec2(-1.0, -1.0), vec2(1.0, -1.0), vec2(-1.0, 1.0), vec2(1.0, 1.0));
+void main() {
+  vec2 c = C[gl_VertexID];
+  vec3 world = aInstPos + (uRight * c.x + uUp * c.y) * aInstSize;
+  vUV = c;
+  vWorld = world;
+  vSeed = aInstSeed;
+  gl_Position = uViewProj * vec4(world, 1.0);
+}`;
+
+export const CLOUD_FS = `#version 300 es
+precision highp float;
+in vec2 vUV;
+in vec3 vWorld;
+in float vSeed;
+uniform vec3 uCamPos;
+uniform vec3 uFogColor;
+out vec4 frag;
+${GRADE_GLSL}
+void main() {
+  float r = length(vUV);
+  if (r > 1.0) discard;
+  // soft two-lobe falloff with per-instance irregularity -> puffy, not flat discs
+  float a = 1.0 - smoothstep(0.30, 1.0, r);
+  a *= 0.72 + 0.28 * vSeed;
+  // top-lit shading toward the sun side, slightly warm white (art direction: white clouds)
+  float lit = 0.5 + 0.5 * vUV.y;
+  vec3 col = mix(vec3(0.78, 0.82, 0.89), vec3(1.05, 1.03, 0.99), lit);
+  // fade into the horizon color with distance (same fog as every surface)
+  float d = length(vWorld - uCamPos);
+  float fog = 1.0 - exp(-d * d * 6e-9);
+  a *= clamp(1.0 - fog * 1.6, 0.0, 1.0);
+  col = mix(col, uFogColor, fog);
+  frag = vec4(sbGrade(col), a * 0.85);
+}`;
+
+// ---- Graphics pass: silhouette outline (inverted hull) for jets / ground targets ----
+// Pairs with JET_VS: main.js scales the model matrix ~4.5% about the entity origin, the
+// renderer culls front faces and blends this dark shell around the silhouette. Fades out
+// with the shared fog so distant outlines melt into the haze instead of floating.
+
+export const OUTLINE_FS = `#version 300 es
+precision highp float;
+in vec3 vWorld;   // from JET_VS (vNormal/vColor intentionally unconsumed)
+uniform vec3 uCamPos;
+uniform vec3 uFogColor;
+out vec4 frag;
+void main() {
+  float d = length(vWorld - uCamPos);
+  float fog = 1.0 - exp(-d * d * 6e-9);
+  vec3 dark = vec3(0.045, 0.075, 0.115);   // dark slate edge (readability rule #1)
+  frag = vec4(mix(dark, uFogColor, fog), 0.85 * (1.0 - fog));
 }`;

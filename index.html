@@ -10,12 +10,21 @@
   #hud {
     position: absolute; inset: 0; pointer-events: none;
     font-family: Consolas, 'Courier New', monospace;
-    color: #cfe8ff; font-size: 13px; line-height: 1.45;
+    color: #f2f7fc; font-size: 13px; line-height: 1.45;
     text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+  }
+  /* Graphics pass: every HUD cluster sits on a dark translucent panel - white text never
+     floats over bright sky (readability rule #3). Cyan borders keep the HUD accent color. */
+  #prof, #jetinfo, #combat, #help {
+    background: rgba(7, 13, 20, 0.62);
+    border: 1px solid rgba(78, 140, 175, 0.40);
+    border-radius: 6px;
+    padding: 6px 10px;
   }
   #prof { position: absolute; top: 10px; left: 12px; }
   #jetinfo { position: absolute; top: 10px; right: 14px; text-align: right; }
-  #combat { position: absolute; top: 10px; right: 14px; text-align: right; }
+  /* fix: #combat used to sit exactly on #jetinfo (both top-right) and they overprinted */
+  #combat { position: absolute; top: 132px; right: 14px; text-align: right; }
   #hpbar { width: 160px; height: 6px; background: #10202c; border: 1px solid #2e5a72;
            margin: 3px 0 6px auto; }
   #hud-hp-bar { display: block; height: 100%; width: 100%; background: #7fd67f; }
@@ -39,9 +48,11 @@
     position: absolute; top: 18%; left: 50%; transform: translateX(-50%);
     font-size: 22px; color: #ffd54f; text-shadow: 0 2px 6px rgba(0,0,0,0.9);
     letter-spacing: 2px; text-align: center;
+    background: rgba(7, 13, 20, 0.62); border: 1px solid rgba(78, 140, 175, 0.40);
+    border-radius: 6px; padding: 6px 18px;
   }
   #help {
-    position: absolute; bottom: 10px; left: 12px; font-size: 12px; color: #9db8d2;
+    position: absolute; bottom: 10px; left: 12px; font-size: 12px; color: #d7e6f2;
   }
   #inv { margin-top: 4px; }
   #err {
@@ -70,6 +81,19 @@
     position: absolute; top: 9%; left: 50%; transform: translateX(-50%);
     display: none; color: #ff5252; font-size: 17px; letter-spacing: 2px;
     text-shadow: 0 0 8px rgba(255, 60, 60, 0.7);
+  }
+  /* Graphics pass: red diamond markers over enemy ground targets (readability rule #5).
+     A rotated square reads as a diamond; the dark ring keeps it visible over sand AND sky. */
+  #hud-ground-markers {
+    position: absolute; inset: 0; pointer-events: none; overflow: hidden;
+  }
+  .sb-ground-marker {
+    position: absolute; width: 12px; height: 12px;
+    border: 2px solid #ff4438;
+    background: rgba(255, 68, 56, 0.14);
+    transform: rotate(45deg);
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.60), 0 0 5px rgba(0, 0, 0, 0.45);
+    pointer-events: none;
   }
   /* ---- Phase 4 (Task 4.7): radio subtitles + pause overlay + 720p/4K overflow ---- */
   #hud-subtitle {

@@ -8,6 +8,7 @@
     "test": "node --expose-gc --test tests/",
     "fuzz": "node tests/fuzz.js --runs 10000 --replay 100",
     "start": "python -m http.server 8080",
+    "dev": "python build.py && python -m http.server 8080",
     "build": "python build.py"
   },
   "author": "Artik Nurochman",

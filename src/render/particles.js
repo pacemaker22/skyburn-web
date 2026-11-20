@@ -51,59 +51,95 @@ export class ParticleSystem {
     return id;
   }
 
-  // Explosion burst (Task 1.8): core flash + sparks + smoke + debris. Deterministic (seeded).
+  // Explosion burst (graphics pass): ~30 particles, the whole effect fades within 0.9 s
+  // (readability rule #4: explosions never block the view). White-hot core -> orange
+  // fireball -> sparks + warm dark smoke. Deterministic (seeded), fully pooled.
   burstExplosion(x, y, z) {
-    this.spawn(P_KIND.FLASH, x, y, z, 0, 0, 0, 0.16, 26, 1.0, 0.85, 0.55);
-    this.spawn(P_KIND.FLASH, x, y, z, 0, 0, 0, 0.30, 12, 1.0, 0.6, 0.3);
-    for (let i = 0; i < 14; i++) {
+    this.spawn(P_KIND.FLASH, x, y, z, 0, 0, 0, 0.22, 30, 1.0, 0.92, 0.70);  // white-hot core
+    this.spawn(P_KIND.FLASH, x, y, z, 0, 0, 0, 0.42, 16, 1.0, 0.55, 0.22);  // orange fireball
+    for (let i = 0; i < 12; i++) {
       const a = this.rng() * Math.PI * 2;
       const u = this.rng() * 2 - 1;
       const sp = 26 + this.rng() * 44;
       const rh = Math.sqrt(1 - u * u);
       this.spawn(P_KIND.SPARK, x, y, z,
         Math.cos(a) * rh * sp, u * sp, Math.sin(a) * rh * sp,
-        0.5 + this.rng() * 0.5, 2.2, 1.0, 0.72, 0.3);
+        0.35 + this.rng() * 0.35, 2.2, 1.0, 0.68, 0.28);
     }
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < 10; i++) {
       const a = this.rng() * Math.PI * 2;
       const sp = 4 + this.rng() * 10;
       this.spawn(P_KIND.SMOKE, x, y, z,
         Math.cos(a) * sp, 3 + this.rng() * 6, Math.sin(a) * sp,
-        1.4 + this.rng() * 1.2, 9 + this.rng() * 7, 0.16, 0.16, 0.17);
+        0.55 + this.rng() * 0.35, 8 + this.rng() * 7, 0.30, 0.27, 0.26);
     }
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 6; i++) {
       const a = this.rng() * Math.PI * 2;
-      const sp = 10 + this.rng() * 18;
+      const u = this.rng() * 2 - 1;
+      const sp = 14 + this.rng() * 22;
+      const rh = Math.sqrt(1 - u * u);
       this.spawn(P_KIND.DEBRIS, x, y, z,
-        Math.cos(a) * sp, 8 + this.rng() * 14, Math.sin(a) * sp,
-        1.0 + this.rng() * 0.6, 1.6, 0.2, 0.2, 0.22);
+        Math.cos(a) * rh * sp, u * sp + 8, Math.sin(a) * rh * sp,
+        0.5 + this.rng() * 0.4, 1.6, 0.25, 0.23, 0.22);
     }
   }
 
-  // Muzzle flash (pooled, 2 puffs - Task 1.3 "muzzle flash pooled").
+  // Muzzle flash (pooled, 2 puffs, 0.05 s per the VFX spec).
   muzzleFlash(x, y, z, dx, dy, dz) {
-    this.spawn(P_KIND.FLASH, x, y, z, dx * 8, dy * 8, dz * 8, 0.07, 5, 1.0, 0.9, 0.62);
+    this.spawn(P_KIND.FLASH, x, y, z, dx * 8, dy * 8, dz * 8, 0.05, 5.5, 1.0, 0.9, 0.62);
     this.spawn(P_KIND.SPARK, x, y, z, dx * 60, dy * 60, dz * 60, 0.05, 1.6, 1.0, 0.8, 0.45);
   }
 
-  // Damage smoke (health < 35%): oily puffs drifting behind the jet.
+  // Bullet hit feedback: tiny flash + 5 bright sparks, gone in ~0.2 s (pooled, VFX spec).
+  hitSpark(x, y, z) {
+    this.spawn(P_KIND.FLASH, x, y, z, 0, 1, 0, 0.10, 4.5, 1.0, 0.85, 0.50);
+    for (let i = 0; i < 5; i++) {
+      const a = this.rng() * Math.PI * 2;
+      const u = (this.rng() * 2 - 1) * 0.7;
+      const sp = 12 + this.rng() * 20;
+      const rh = Math.sqrt(1 - u * u);
+      this.spawn(P_KIND.SPARK, x, y, z,
+        Math.cos(a) * rh * sp, u * sp + 4, Math.sin(a) * rh * sp,
+        0.16 + this.rng() * 0.06, 1.8, 1.0, 0.80, 0.40);
+    }
+  }
+
+  // Damage smoke (health < 35%): oily puffs drifting behind the jet (low count, pooled).
   emitDamageSmoke(x, y, z, vx, vy, vz) {
     this.spawn(P_KIND.SMOKE, x, y, z, vx * 0.2, vy * 0.2 + 1.5, vz * 0.2,
       1.1, 5, 0.12, 0.12, 0.13);
   }
 
-  // Missile motor trail puff (smoke ribbon segment).
+  // Missile motor trail puff (smoke ribbon segment): white smoke, 2 s life (VFX spec).
+  // Emission rate is throttled in missiles.js so one missile holds <= 100 live puffs.
   emitTrail(x, y, z) {
-    this.spawn(P_KIND.TRAIL, x, y, z, 0, 1.2, 0, 0.9, 2.4, 0.82, 0.82, 0.85);
+    this.spawn(P_KIND.TRAIL, x, y, z, 0, 1.0, 0, 2.0, 2.6, 0.90, 0.90, 0.92);
   }
 
-  // Flare: hot bright falling spark cluster (seeder for decoy visuals).
+  // Flare: bright white-hot core + 3 falling sparks, visuals last ~1.5 s (VFX spec).
   emitFlare(x, y, z, vx, vy, vz) {
+    this.spawn(P_KIND.FLASH, x, y, z, 0, 0, 0, 0.30, 6, 1.0, 0.85, 0.55);
     for (let i = 0; i < 3; i++) {
       this.spawn(P_KIND.SPARK, x, y, z,
         vx + (this.rng() - 0.5) * 18, vy - 6 - this.rng() * 8, vz + (this.rng() - 0.5) * 18,
-        1.8, 3.4, 1.0, 0.75, 0.35);
+        1.5, 3.2, 1.0, 0.72, 0.32);
     }
+  }
+
+  // Afterburner cone + glow: short-lived additive puffs streaming backwards (pooled).
+  // (bx,by,bz) = unit backwards vector of the jet at emission time.
+  emitAfterburner(x, y, z, bx, by, bz) {
+    this.spawn(P_KIND.FLASH, x, y, z,
+      bx * 55 + (this.rng() - 0.5) * 8, by * 55 + (this.rng() - 0.5) * 8,
+      bz * 55 + (this.rng() - 0.5) * 8, 0.14, 5.5, 1.0, 0.62, 0.25);
+    this.spawn(P_KIND.FLASH, x, y, z,
+      bx * 30, by * 30, bz * 30, 0.08, 3.5, 1.0, 0.85, 0.55);
+  }
+
+  // Engine glow: small warm additive dot at the nozzle - keeps distant jets readable
+  // against terrain (readability rule #1, pairs with the silhouette outline).
+  emitEngineGlow(x, y, z) {
+    this.spawn(P_KIND.FLASH, x, y, z, 0, 0, 0, 0.12, 5, 1.0, 0.72, 0.35);
   }
 
   // Integrate all live particles; free expired slots. O(max) scan - 2000 floats, cheap.

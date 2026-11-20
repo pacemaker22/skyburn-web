@@ -90,6 +90,7 @@ export class MissileSystem {
     this.flareY = new Float32Array(this.max);
     this.flareZ = new Float32Array(this.max);
     this.explodeTimer = new Float32Array(this.max); // HIT/MISS/TIMEOUT -> EXPLODE grace
+    this.trailPhase = new Uint8Array(this.max);     // graphics pass: 30 Hz trail emission phase
     this._ctxCache = new Array(this.max); // per-slot ctx objects (stable, no per-tick alloc)
     for (let i = 0; i < this.max; i++) {
       // Phase 4 FIX (found by tests/property.test.js): slot MUST be the cache index.
@@ -279,7 +280,11 @@ export class MissileSystem {
       this.yaw[i] = Math.atan2(ndx, -ndz);
       this.pitch[i] = Math.asin(Math.max(-1, Math.min(1, ndy)));
       if (trailFn && (st === MISSILE_STATE.BOOST || st === MISSILE_STATE.GUIDE)) {
-        trailFn(px, py, pz);
+        // graphics pass: emit at 30 Hz per missile (every 4th 120 Hz tick) so the white smoke
+        // ribbon holds <= 100 puffs per missile at its 2 s life. Visual only - guidance,
+        // FSM transitions and physics above are untouched.
+        this.trailPhase[i] = (this.trailPhase[i] + 1) & 3;
+        if (this.trailPhase[i] === 1) trailFn(px, py, pz);
       }
     }
   }

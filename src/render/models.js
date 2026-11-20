@@ -301,3 +301,62 @@ export function shapeIndexFor(jet) {
   const i = SHAPE_IDS.indexOf(jet && jet.shape);
   return i >= 0 ? i : 0;
 }
+
+// ---- Graphics pass extras (visual only, same pushBox conventions) ----
+
+import { mulberry32 } from '../world/terrain.js';
+
+// Guided-missile body (bright orange, pale nose, dark fins). Forward = -Z like every jet
+// mesh, so MissileSystem yaw/pitch drive it directly through mat4FromYPR. ~30 tris, stride 9.
+export function buildMissileLod() {
+  const out = { verts: [], idx: [], vertCount: 0 };
+  const BODY = [1.0, 0.42, 0.08];    // bright orange (readability rule #2)
+  const NOSE = [1.0, 0.80, 0.58];    // warm pale tip
+  const FIN = [0.16, 0.18, 0.20];    // dark slate fins
+  pushBox(out, 0, 0, 0.4, 0.44, 0.44, 3.4, 0, BODY);   // body tube
+  pushBox(out, 0, 0, -1.7, 0.30, 0.30, 0.9, 0, NOSE);  // nose block
+  pushBox(out, 0.56, 0, 1.5, 0.95, 0.06, 0.8, 0, FIN); // right fin
+  pushBox(out, -0.56, 0, 1.5, 0.95, 0.06, 0.8, 0, FIN); // left fin
+  pushBox(out, 0, 0.56, 1.5, 0.06, 0.95, 0.8, 0, FIN); // top fin
+  pushBox(out, 0, -0.56, 1.5, 0.06, 0.95, 0.8, 0, FIN); // bottom fin
+  return { verts: new Float32Array(out.verts), idx: new Uint16Array(out.idx), stride: 9 };
+}
+
+// Instanced cloud billboard instances: one Float32Array(count * 5), layout [x, y, z, size, seed].
+// Static ring layout around the island (1400-8400 m out, 2300-3700 m up) with a handful of
+// loose clusters; deterministic via the seeded RNG so every boot shows the same sky. The art
+// direction asks for 30-50 sprites -> default count 44. Built once at boot, never per frame.
+export function buildCloudBillboards(count, seed) {
+  const n = count || 44;
+  const rand = mulberry32(seed === undefined ? 0xC10D : seed);
+  const data = new Float32Array(n * 5);
+  // 5 cluster anchors keep the sky from looking uniformly sprinkled
+  const cx = new Float32Array(5), cz = new Float32Array(5);
+  for (let k = 0; k < 5; k++) {
+    const ang = rand() * Math.PI * 2;
+    const rad = 1800 + rand() * 5200;
+    cx[k] = Math.cos(ang) * rad;
+    cz[k] = Math.sin(ang) * rad;
+  }
+  for (let i = 0; i < n; i++) {
+    let x, z;
+    if (i < 20) {
+      const k = i % 5;
+      x = cx[k] + (rand() - 0.5) * 2600;   // clustered members
+      z = cz[k] + (rand() - 0.5) * 2600;
+    } else {
+      const ang = rand() * Math.PI * 2;    // scattered members
+      const rad = 1400 + Math.pow(rand(), 0.8) * 7000;
+      x = Math.cos(ang) * rad;
+      z = Math.sin(ang) * rad;
+    }
+    const y = 2300 + rand() * 1400;
+    const size = 280 + rand() * 420;
+    data[i * 5] = x;
+    data[i * 5 + 1] = y;
+    data[i * 5 + 2] = z;
+    data[i * 5 + 3] = size;
+    data[i * 5 + 4] = rand();
+  }
+  return data;
+}

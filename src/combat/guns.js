@@ -13,7 +13,7 @@ export const GUN_TUNING = {
   FALLOFF_END: 2400,      // linear falloff to MIN_DMG_FRAC at 2400 m
   MIN_DMG_FRAC: 0.25,
   SPREAD_RAD: 0.0035,     // ~0.2 degree cone (aim wobble)
-  TRACER_TTL: 0.055,      // s a tracer segment stays visible
+  TRACER_TTL: 0.3,        // s a tracer segment stays visible (VFX spec: 0.3 s fading streak)
   MAX_TRACERS: 500,       // PRD pool size
 };
 

@@ -15,7 +15,7 @@ import { Profiler } from './core/profiler.js';         // Task 4.5: dev timing H
 import {
   Renderer, buildShipLod, buildRigLod, buildGroundLod,
 } from './render/renderer.js';
-import { buildJetKitLod, SHAPE_IDS, shapeIndexFor } from './render/models.js';
+import { buildJetKitLod, SHAPE_IDS, shapeIndexFor, buildMissileLod, buildCloudBillboards } from './render/models.js';
 import { Terrain } from './world/terrain.js';
 import { Ocean } from './world/ocean.js';
 import { Carrier, CARRIER_TUNING } from './world/carrier.js';
@@ -23,10 +23,10 @@ import { WorldEntities, TEAM, ENT_TYPE } from './combat/entities.js';
 import { CollisionWorld, groundHitAt } from './combat/collision.js';
 import { FlightModel } from './physics/flight.js';
 import { GunSystem, GUN_TUNING } from './combat/guns.js';
-import { MissileSystem, MISSILE_TUNING } from './combat/missiles.js';
+import { MissileSystem, MISSILE_TUNING, MISSILE_STATE } from './combat/missiles.js';
 import { LockSystem, LOCK_STATE } from './combat/lockon.js';
 import { EnemyAI } from './ai/enemy.js';
-import { ParticleSystem, P_KIND } from './render/particles.js';
+import { ParticleSystem } from './render/particles.js';
 import { ImpactCam } from './render/impactCam.js';
 import { FSMTable, FSM } from './ai/fsm.js';
 import { Spawner } from './mission/spawner.js';
@@ -200,6 +200,16 @@ async function boot() {
   renderer.setCarrier(new Carrier({}).buildMesh());
   renderer.setShipMeshes([buildShipLod(), buildRigLod()]);
   renderer.setGroundMesh(buildGroundLod());
+  // Graphics pass: guided-missile bodies + instanced cloud billboards (static, one upload).
+  renderer.setMissileMesh(buildMissileLod());
+  renderer.setClouds(buildCloudBillboards(44, 0xC10D), 44);
+  // FIX (graphics pass wiring): the Phase 1 particle + tracer pools were constructed per world
+  // but never bound to the renderer, so muzzle flashes / explosions / trails / tracers never
+  // drew. One shared ParticleSystem now lives at boot scope (bound below) and every world
+  // session emits into it - same pool, same staging layout, zero per-frame allocation.
+  const particles = new ParticleSystem(2000, 0x9E3779B);
+  renderer.setParticles(particles);
+  renderer.setLineCapacity(GUN_TUNING.MAX_TRACERS * 2);
 
   // (saveData/persistSave are set up at the very top of boot() - see the persistence
   // block there. The consumers below only read it, after the declaration.)
@@ -234,6 +244,21 @@ async function boot() {
   pauseEl.textContent = 'PAUSED - ESC / P TO RESUME';
   pauseEl.hidden = true;
   document.body.appendChild(pauseEl);
+
+  // Graphics pass: red diamond markers over enemy ground targets (readability rule #5).
+  // Preallocated DOM pool - zero allocation per frame, only display toggling.
+  const GROUND_MARKER_MAX = 16;
+  const groundMarkerWrap = document.createElement('div');
+  groundMarkerWrap.id = 'hud-ground-markers';
+  document.body.appendChild(groundMarkerWrap);
+  const groundMarkerEls = [];
+  for (let i = 0; i < GROUND_MARKER_MAX; i++) {
+    const el = document.createElement('div');
+    el.className = 'sb-ground-marker';
+    el.style.display = 'none';
+    groundMarkerWrap.appendChild(el);
+    groundMarkerEls.push(el);
+  }
   const briefing = new BriefingScreen(document, {
     onLaunch: () => fireGame(GAME_EVENT.LAUNCH),
     onBack: () => fireGame(GAME_EVENT.BACK),
@@ -412,7 +437,8 @@ async function boot() {
     }
 
     // ---- combat systems ----
-    const particles = new ParticleSystem(2000, 0x9E3779B);
+    // (particles come from the boot-scope shared pool bound to the renderer at boot -
+    // buildWorld no longer constructs its own, which is what left VFX invisible before)
     const impactCam = new ImpactCam();
 
     const flareTimer = new Float32Array(ents.max);   // >0 while flares burn (per entity)
@@ -540,7 +566,7 @@ async function boot() {
         audio.explosion();
         if (mission) mission.noteKill(id); // Task 2.3/2.4: kill routing -> DAG progress
       } else if (hx !== undefined) {
-        particles.spawn(P_KIND.FLASH, hx, hy, hz, 0, 2, 0, 0.5, 6, 1, 0.8, 0.4); // hit flash
+        particles.hitSpark(hx, hy, hz); // graphics pass: 5 sparks, 0.2 s (VFX spec)
       }
     }
 
@@ -902,7 +928,11 @@ async function boot() {
       }
 
       // --- missiles (Task 1.4: PN guidance + proximity fuse; Phase 2 cruise missiles too) ---
-      missiles.update(sdt, ents, (x, y, z) => { particles.emitTrail(x, y, z); });
+      // graphics pass: the trail callback is budget-guarded so cosmetic smoke never pushes
+      // the pool past the 500-active performance rule (combat bursts keep priority).
+      missiles.update(sdt, ents, (x, y, z) => {
+        if (particles.activeCount() < 500) particles.emitTrail(x, y, z);
+      });
 
       // --- carrier (Task 1.7: moving deck; free flight only) ---
       if (freeMode) {
@@ -951,7 +981,7 @@ async function boot() {
         if (!ents.isAlive(id)) continue;
         smokeCd[id] -= sdt;
         if (ents.health[id] < ents.maxHealth[id] * 0.35 && smokeCd[id] <= 0) {
-          smokeCd[id] = 0.06;
+          smokeCd[id] = 0.12;   // graphics pass: halved rate (low-count damage smoke)
           particles.emitDamageSmoke(ents.pos[id * 3], ents.pos[id * 3 + 1], ents.pos[id * 3 + 2],
             ents.vel[id * 3], ents.vel[id * 3 + 1], ents.vel[id * 3 + 2]);
         }
@@ -1043,6 +1073,10 @@ async function boot() {
       groundCount: 0,
       groundPos: new Float32Array(MAX_GROUNDS * 3),
       groundRot: new Float32Array(MAX_GROUNDS),
+      // graphics pass: guided missiles (drawn as bright orange bodies by the renderer)
+      missileCount: 0,
+      missilePos: new Float32Array(64 * 3),
+      missileRot: new Float32Array(64 * 2),
     };
     const projOut = new Float32Array(3);
 
@@ -1063,6 +1097,7 @@ async function boot() {
     let latEma = 0;
     let lastLatencyEvent = -1;
     let lastRenderNow = -1;
+    let glowTick = 0;             // graphics pass: engine-glow emission phase (render frames)
 
     function updateTracers() {
       let v = 0;
@@ -1073,7 +1108,7 @@ async function boot() {
         tracerData[o] = guns.pos0[i * 3]; tracerData[o + 1] = guns.pos0[i * 3 + 1];
         tracerData[o + 2] = guns.pos0[i * 3 + 2];
         tracerData[o + 3] = 1.0; tracerData[o + 4] = 0.92; tracerData[o + 5] = 0.55;
-        tracerData[o + 6] = Math.min(1, guns.ttl[i] / 0.055);
+        tracerData[o + 6] = Math.min(1, guns.ttl[i] / GUN_TUNING.TRACER_TTL);
         const o2 = o + 7;
         tracerData[o2] = guns.pos1[i * 3]; tracerData[o2 + 1] = guns.pos1[i * 3 + 1];
         tracerData[o2 + 2] = guns.pos1[i * 3 + 2];
@@ -1219,12 +1254,72 @@ async function boot() {
       }
       scene.shipCount = sn;
       scene.groundCount = gn;
+      // graphics pass: alive missiles into the scene view (interpolated, pooled slots only)
+      let mn = 0;
+      for (let i = 0; i < missiles.max && mn < 64; i++) {
+        const mst = missiles.stateOf(i);
+        if (mst < MISSILE_STATE.BOOST || mst > MISSILE_STATE.TIMEOUT) continue;
+        scene.missilePos[mn * 3] = missiles.prevPos[i * 3] +
+          (missiles.pos[i * 3] - missiles.prevPos[i * 3]) * alpha;
+        scene.missilePos[mn * 3 + 1] = missiles.prevPos[i * 3 + 1] +
+          (missiles.pos[i * 3 + 1] - missiles.prevPos[i * 3 + 1]) * alpha;
+        scene.missilePos[mn * 3 + 2] = missiles.prevPos[i * 3 + 2] +
+          (missiles.pos[i * 3 + 2] - missiles.prevPos[i * 3 + 2]) * alpha;
+        scene.missileRot[mn * 2] = missiles.yaw[i];
+        scene.missileRot[mn * 2 + 1] = missiles.pitch[i];
+        mn++;
+      }
+      scene.missileCount = mn;
       scene.carrierX = carrier.pos[0]; scene.carrierY = freeMode ? 0 : -9999;
       scene.carrierZ = carrier.pos[2]; scene.carrierYaw = carrier.yaw;
 
       const timeSec = now * 0.001;
       renderer.drawFrame(camPos, camTarget, fovDeg * DEG, scene, timeSec);
       renderer.drawTracers(tracerData, updateTracers());
+
+      // --- graphics pass: engine glows + afterburner cone (pooled, budget-guarded) ---
+      // Emission at ~20 Hz keeps the pool tiny; cosmetic emitters respect the 500-particle
+      // budget so combat bursts are never crowded out (performance rule: max 500 active).
+      glowTick = (glowTick + 1) % 3;
+      if (glowTick === 0 && particles.activeCount() < 480) {
+        for (let i = 0; i < scene.jetCount; i++) {
+          const jy = scene.jetRot[i * 3], jp = scene.jetRot[i * 3 + 1];
+          const jfx = Math.sin(jy) * Math.cos(jp), jfy = Math.sin(jp),
+            jfz = -Math.cos(jy) * Math.cos(jp);
+          const nx2 = scene.jetPos[i * 3] - jfx * 6.2;
+          const ny2 = scene.jetPos[i * 3 + 1] - jfy * 6.2;
+          const nz2 = scene.jetPos[i * 3 + 2] - jfz * 6.2;
+          particles.emitEngineGlow(nx2, ny2, nz2);
+          // afterburner cone: player (scene index 0 while alive) or AI in an attack run
+          const isPlayer = ents.isAlive(playerId) && i === 0;
+          const flIdx = isPlayer ? -1 : i - (ents.isAlive(playerId) ? 1 : 0);
+          const fl = isPlayer ? playerFlight : (flIdx >= 0 ? enemyFlight[flIdx] : null);
+          if (fl && fl.afterburner) {
+            particles.emitAfterburner(nx2, ny2, nz2, -jfx, -jfy, -jfz);
+          }
+        }
+      }
+
+      // --- graphics pass: red diamond markers over enemy ground targets (readability #5) ---
+      let gmk = 0;
+      if (!impactCam.active) {
+        for (let id = 0; id < ents.count && gmk < GROUND_MARKER_MAX; id++) {
+          if (!ents.isAlive(id) || ents.type[id] !== ENT_TYPE.GROUND) continue;
+          if (ents.team[id] !== TEAM.ENEMY) continue;
+          const gdx = ents.pos[id * 3] - camPos[0];
+          const gdy = ents.pos[id * 3 + 1] - camPos[1];
+          const gdz = ents.pos[id * 3 + 2] - camPos[2];
+          if (gdx * gdx + gdy * gdy + gdz * gdz > 64000000) continue; // 8 km radius cap
+          renderer.project(projOut, camPos,
+            ents.pos[id * 3], ents.pos[id * 3 + 1] + 26, ents.pos[id * 3 + 2]);
+          if (projOut[2] <= 0) continue;
+          const el = groundMarkerEls[gmk++];
+          el.style.display = 'block';
+          el.style.left = (projOut[0] - 8) + 'px';
+          el.style.top = (projOut[1] - 8) + 'px';
+        }
+      }
+      for (let i = gmk; i < GROUND_MARKER_MAX; i++) groundMarkerEls[i].style.display = 'none';
 
       // HUD target box (Task 1.9): project the lock target to screen space
       if (hud.targetBox) {
@@ -1636,6 +1731,47 @@ async function boot() {
     loop.frame(nowMs);
     requestAnimationFrame(frameCb);
   }
+  // Dev-only debug handle for headless visual-soak verification (tools/dev_soak.mjs).
+  // build.py flips __SKYBURN_DEV__ to false in dist, so this never ships.
+  if (window.__SKYBURN_DEV__) {
+    window.__SB_DEV__ = {
+      game: () => game,
+      world: () => world,
+      renderer: () => renderer,
+      stats: () => ({
+        fps: loop.stats.fps, frameMs: loop.stats.frameMs, draws: renderer.drawCalls,
+        particles: renderer.particleCount(),
+      }),
+      state: () => game.state,
+    };
+  }
+
+  // Dev-only auto-launch for the soak driver: replays the exact FREE FLIGHT button
+  // path (same pendingLaunch shape, same FSM transitions) when served with
+  // ?autostart=1 and the dev flag is on. Unreachable in dist and in Node tests.
+  if (window.__SKYBURN_DEV__ &&
+      new URLSearchParams(window.location.search).has('autostart')) {
+    const jetParam = new URLSearchParams(window.location.search).get('jet');
+    if (jetParam) {
+      const j = pickJet(jetList, jetParam);
+      if (j) selectedJet = j;
+    }
+    pendingLaunch = {
+      free: true, missionDef: null,
+      freeDef: {
+        title: 'Free Flight Sandbox',
+        briefing: 'Open training airspace: 4 hostiles patrol the sector and carrier Nemesis ' +
+          'is on station. Land on the deck slow (<180 kn) with gear, hold W to catapult.',
+        map: 'ocean',
+        stages: [{ objectives: [{ label: 'Survive and score kills' }] }],
+        reward: 0,
+      },
+      map: maps.ocean, difficulty, jetData: selectedJet,
+    };
+    fireGame(GAME_EVENT.PICK);
+    fireGame(GAME_EVENT.LAUNCH);
+  }
+
   refreshMenu();
   menuShow();
   requestAnimationFrame(frameCb);

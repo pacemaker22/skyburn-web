@@ -129,12 +129,15 @@ export class Terrain {
   }
 
   // Build interleaved mesh [px,py,pz, nx,ny,nz, r,g,b] + Uint32 indices. One LOD ring (Task 0.5).
+  // Graphics pass: vertex COLORS gain perlin patchiness + painted runway/roads; HEIGHTS are
+  // byte-identical to the Phase 0 generator, so collision/gameplay is untouched.
   buildMesh() {
     const n = this.n, size = this.size, half = this.half, step = size / this.segments;
     const vertCount = n * n;
     const stride = 9;
     const verts = new Float32Array(vertCount * stride);
     const H = this.heights;
+    const perlin = this.perlin;
     for (let j = 0; j < n; j++) {
       const z = -half + j * step;
       for (let i = 0; i < n; i++) {
@@ -151,7 +154,10 @@ export class Terrain {
         const o = (j * n + i) * stride;
         verts[o] = x; verts[o + 1] = y; verts[o + 2] = z;
         verts[o + 3] = nx * inv; verts[o + 4] = inv; verts[o + 5] = nz * inv;
-        colorForHeight(y, verts, o + 6);
+        // broad patchiness picks between the two greens; fine mottle breaks the flat bands
+        const patch = perlin.fbm(x * 0.0016, z * 0.0016, 3);
+        const mottle = perlin.fbm(x * 0.012, z * 0.012, 2);
+        colorForHeight(y, patch, mottle, x, z, verts, o + 6);
       }
     }
     const quads = this.segments * this.segments;
@@ -168,11 +174,41 @@ export class Terrain {
   }
 }
 
-// Original height-band palette: sand -> grass -> forest -> rock -> snow.
-function colorForHeight(y, out, o) {
-  if (y < 3) { out[o] = 0.78; out[o + 1] = 0.72; out[o + 2] = 0.53; }
-  else if (y < 90) { out[o] = 0.44; out[o + 1] = 0.57; out[o + 2] = 0.31; }
-  else if (y < 240) { out[o] = 0.30; out[o + 1] = 0.43; out[o + 2] = 0.24; }
-  else if (y < 420) { out[o] = 0.47; out[o + 1] = 0.45; out[o + 2] = 0.43; }
-  else { out[o] = 0.92; out[o + 1] = 0.93; out[o + 2] = 0.95; }
+// Graphics-pass palette (art direction: 2 greens + sandy + dark slate, noise varied, runway
+// + roads painted as color only). Heights are NOT touched here - gameplay identical.
+// patch/mottle are perlin fbm samples roughly in [-1, 1]; (x, z) locate runway/road strips.
+function colorForHeight(y, patch, mottle, x, z, out, o) {
+  let r, g, b;
+  if (y < 4) {
+    r = 0.80; g = 0.72; b = 0.52;                                   // warm sandy shoreline
+  } else if (y < 90) {
+    // green 1 (light warm grass) <-> green 2 (deeper green) blended by patch noise
+    const t = Math.min(1, Math.max(0, patch * 0.5 + 0.5));
+    r = 0.42 - 0.10 * t; g = 0.55 - 0.04 * t; b = 0.28 + 0.01 * t;
+  } else if (y < 260) {
+    r = 0.27; g = 0.39; b = 0.24;                                   // green 2: deep slopes
+  } else if (y < 460) {
+    r = 0.40; g = 0.42; b = 0.45;                                   // dark slate rock
+  } else {
+    r = 0.86; g = 0.88; b = 0.91;                                   // pale caps (rare, high)
+  }
+  // fine mottle: +/-7% brightness variation kills the flat banded look
+  const m = 1 + mottle * 0.14;
+  r *= m; g *= m; b *= m;
+  // painted airfield + roads (color-only overlays, masked to lowlands so they hug flat land;
+  // vertex spacing is ~48 m, so strip widths are sized to survive vertex interpolation)
+  if (y < 150) {
+    const inRwyZ = z > 600 && z < 2800;
+    if (inRwyZ && x > -60 && x < 60) {
+      r = 0.22; g = 0.23; b = 0.25;                                 // asphalt runway strip
+      if (x > -18 && x < 18 && ((z - 600) % 300) < 140) {
+        r = 0.85; g = 0.85; b = 0.82;                               // dashed centerline
+      }
+    } else if (x > -45 && x < 45 && z > 2800 && z < 5200 && y < 120) {
+      r = 0.60; g = 0.55; b = 0.44;                                 // sandy road, heading south
+    } else if (z > -45 && z < 45 && x > -3200 && x < -60 && y < 120) {
+      r = 0.60; g = 0.55; b = 0.44;                                 // sandy road, heading west
+    }
+  }
+  out[o] = r; out[o + 1] = g; out[o + 2] = b;
 }
