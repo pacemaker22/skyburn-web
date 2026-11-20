@@ -8,6 +8,7 @@
 #   missing artifact (no 404 noise) and silently uses its JS fallback with the same API.
 # - Rejects forbidden framework imports (PRD: no React/Vue/Three.js/Babylon/engine).
 
+import hashlib
 import os
 import re
 import shutil
@@ -183,6 +184,22 @@ def main():
         f.write(html)
     files_out.append(('index.html', os.path.getsize(out_html)))
 
+    # Phase 5 (Task 5.1 + 5.4): PWA artifacts - manifest + generated icons, verbatim.
+    pwa_files = []
+    manifest_src = os.path.join(ROOT, 'manifest.json')
+    if os.path.isfile(manifest_src):
+        shutil.copyfile(manifest_src, os.path.join(DIST, 'manifest.json'))
+        pwa_files.append('manifest.json')
+    icons_src = os.path.join(ROOT, 'icons')
+    if os.path.isdir(icons_src):
+        icons_dist = os.path.join(DIST, 'icons')
+        os.makedirs(icons_dist, exist_ok=True)
+        for name in sorted(os.listdir(icons_src)):
+            if name.endswith('.png'):
+                shutil.copyfile(os.path.join(icons_src, name),
+                                os.path.join(icons_dist, name))
+                pwa_files.append('icons/' + name)
+
     # walk src/
     for dirpath, _dirnames, filenames in os.walk(SRC):
         rel_dir = os.path.relpath(dirpath, ROOT)
@@ -219,6 +236,25 @@ def main():
                 shutil.copyfile(src_path, dest_path)
                 files_out.append((rel_path, os.path.getsize(dest_path)))
 
+    # Phase 5 (Task 5.1 + 5.4): emit dist/sw.js with the FULL dist precache list and a
+    # content-hashed cache namespace - every deploy starts a fresh cache (no stale
+    # assets) and "offline after first visit" covers the whole bundle, not just the
+    # shell. The source-tree sw.js keeps its dev shell list for raw-src serving.
+    with open(os.path.join(ROOT, 'sw.js'), 'r', encoding='utf-8') as f:
+        sw_src = f.read()
+    urls = ["'./'"] + ["'./%s'" % rel.replace(os.sep, '/') for rel, _s in files_out] + \
+        ["'./%s'" % rel for rel in pwa_files]
+    sw_out = re.sub(r'const PRECACHE_LIST = \[.*?\];',
+                    'const PRECACHE_LIST = [\n  ' + ',\n  '.join(urls) + ',\n];',
+                    sw_src, count=1, flags=re.S)
+    digest = hashlib.sha1('\n'.join(urls).encode('utf-8')).hexdigest()[:8]
+    sw_out = sw_out.replace("const VERSION = 'v1-dev';",
+                            "const VERSION = 'v1-%s';" % digest)
+    out_sw = os.path.join(DIST, 'sw.js')
+    with open(out_sw, 'w', encoding='utf-8') as f:
+        f.write(sw_out)
+    files_out.append(('sw.js', os.path.getsize(out_sw)))
+
     total = sum(size for _p, size in files_out)
     print('[build] dist/ contents:')
     for path, size in sorted(files_out):
@@ -230,6 +266,7 @@ def main():
         raise SystemExit('[build] FAIL: dist/ is %d bytes, Phase 0 limit is %d bytes'
                          % (total, MAX_DIST_BYTES))
     print('[build] OK: dist/ under %d MB limit' % (MAX_DIST_BYTES // 1000000))
+    print('[build] Phase 5 AC: dist %.2f MB < 50 MB ship limit' % (total / 1e6))
 
 
 if __name__ == '__main__':

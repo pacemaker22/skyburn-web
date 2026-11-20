@@ -43,4 +43,36 @@ assert.ok(glsl.SKY_FS.includes('smoothstep'), 'SKY_FS intact');
 assert.ok(glsl.OCEAN_VS.includes('uTime'), 'OCEAN_VS intact');
 assert.ok(!/\breact\b|\bthree\b/i.test(JSON.stringify(Object.keys(glsl))), 'no framework refs');
 
+// ---- Phase 5 (Tasks 5.1-5.4): PWA artifacts + save/leaderboard in minified dist ----
+const fs = await import('node:fs');
+const dm = JSON.parse(fs.readFileSync(new URL('../dist/manifest.json', import.meta.url), 'utf8'));
+assert.equal(dm.name, 'SKYBURN');
+assert.ok(Array.isArray(dm.icons) && dm.icons.length >= 4, 'dist manifest icons');
+for (const icon of dm.icons) {
+  const buf = fs.readFileSync(new URL('../dist/' + icon.src, import.meta.url));
+  assert.deepEqual([...buf.subarray(0, 4)], [0x89, 0x50, 0x4e, 0x47], 'PNG: ' + icon.src);
+}
+const distSw = fs.readFileSync(new URL('../dist/sw.js', import.meta.url), 'utf8');
+assert.ok(!distSw.includes("const VERSION = 'v1-dev'"),
+  'dist sw cache name is build-hashed');
+const list = distSw.match(/const PRECACHE_LIST = \[([\s\S]*?)\];/);
+assert.ok(list, 'dist sw has a precache list');
+const urls = list[1].match(/'\.\/[^']*'/g) || [];
+assert.ok(urls.length > 20, 'precache covers the full dist file set, got ' + urls.length);
+assert.ok(urls.includes("'./index.html'") && urls.includes("'./manifest.json'"));
+
+const saveMod = await import('../dist/src/core/save.js');
+saveMod.MemoryBackend.reset();
+const ssys = new saveMod.SaveSystem(new saveMod.MemoryBackend());
+const exported = await ssys.export();
+assert.ok(exported.includes('"highScores": {}'), 'v2 save shape in minified dist');
+const reimported = await ssys.import(exported);
+assert.equal(reimported.version, 2);
+
+const lb = await import('../dist/src/core/leaderboard.js');
+const boards = {};
+assert.equal(lb.recordScore(boards, 'm1', { score: 10, timeSec: 5, difficulty: 1, date: '' }), 1);
+assert.equal(boards.m1.length, 1);
+assert.equal(lb.BOARD_SIZE, 5);
+
 console.log('MINIFIED-DIST CHECKS: all ok');

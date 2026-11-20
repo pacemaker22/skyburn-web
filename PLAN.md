@@ -294,11 +294,17 @@ src/data/jets/weapons/missions/maps, src/verify/invariants, verify/*.tla, tests/
 - [x] Phase 1 - Core Combat (PASS: 58/58 tests green, dogfight + carrier ops; commit 32f9d3d, tag v0.2)
 - [x] Phase 2 - Missions (PASS: 83/83 tests green; missions M1-M4, objective DAG, spawner,
       checkpoints, briefing/debrief, HUD v2, cruise missiles + protected rig AC < 3 min)
-- [ ] Phase 3 - Content
+- [x] Phase 3 - Content
       - [x] 3A Jets + Hangar (PASS: 94/94 tests green; 42-jet roster + weapons.json,
             kitbash 7 shape families x 3 LODs, armor/loadout balance, hangar grid +
             stats + compare + credit unlocks; commit a86fd42)
-      - [ ] 3B Maps + Missions 5-14 + Ace bonuses + balancing + audio
-- [ ] Phase 4 - Verification + Polish
-- [ ] Phase 5 - Ship
+      - [x] 3B Maps + Missions M1-M14 + Ace bonuses + balancing + audio (8 maps,
+            SR-71 recon M11, finale M14; tag v0.4, commit ca6ab2b)
+- [x] Phase 4 - Verification + Polish (verify/*.tla TLC-clean, tests/fuzz.js 10k runs +
+      100 identical replay hashes, property + quality tests, auto quality governor,
+      gamepad remap, accessibility; docs/VERIFICATION_REPORT.md)
+- [x] Phase 5 - Ship (PWA offline: manifest/icons/service worker; save v2 with
+      export/import/clear; local top-5 leaderboards; dist 0.34 MB < 50 MB;
+      docs/README.md + PLAYER_GUIDE.md + BETA_REPORT.md; HANDOFF_Phase_5.md; tag v1.0)
+
 

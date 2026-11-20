@@ -3,7 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SKYBURN - Phase 2 Missions</title>
+<!-- Phase 5 (Task 5.1): PWA wiring - manifest, theme color, icons. -->
+<meta name="theme-color" content="#0a0e14">
+<link rel="manifest" href="./manifest.json">
+<link rel="icon" type="image/png" href="./icons/icon-64.png">
+<link rel="apple-touch-icon" href="./icons/icon-192.png">
+<title>SKYBURN v1.0</title>
 <style>
   html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #0a0e14; }
   #gl { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
@@ -254,5 +259,17 @@
 </div>
 <script>window.__SKYBURN_DEV__ = true;</script>
 <script type="module" src="./src/main.js"></script>
+<script>
+  // Phase 5 (Task 5.1): PWA service-worker registration. SWs require a secure context
+  // (https, or http://localhost / 127.0.0.1); over plain http on a LAN IP or file:// this
+  // skips silently and the game still runs (worst case: no offline caching).
+  if ('serviceWorker' in navigator &&
+      (location.protocol === 'https:' ||
+       location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('./sw.js').catch(function () {});
+    });
+  }
+</script>
 </body>
 </html>

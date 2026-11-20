@@ -6,7 +6,9 @@
 // only. Data shape is a small plain JSON object (structured-clone safe).
 
 export const SAVE_KEY = 'save1';
-export const SAVE_VERSION = 1;
+// Phase 5 (Task 5.2): v2 adds highScores (local leaderboard boards). mergeSave migrates
+// any older shape to SAVE_VERSION on load, so v1 saves keep working unchanged.
+export const SAVE_VERSION = 2;
 
 // Fresh save data (merged over loaded data so new fields appear after updates).
 export function defaultSaveData() {
@@ -15,6 +17,10 @@ export function defaultSaveData() {
     difficulty: 1,                 // 0 rookie, 1 veteran, 2 ace
     unlocked: ['m1'],              // mission ids the player may launch
     results: {},                   // missionId -> { success, score, timeSec, kills }
+    // Phase 5 (Task 5.2 + 5.3): local leaderboard boards,
+    // missionId -> array of { score, timeSec, difficulty, date } (top entries only,
+    // sizing/ordering owned by core/leaderboard.js).
+    highScores: {},
     checkpoint: null,              // { missionId, stageIndex, difficulty, timeSec, player {...} }
     credits: 1500,                 // Task 3A.4: earned from debrief, spent on jets
     ownedJets: ['f16c', 'mig29'],  // Task 3A.4: jets the hangar may select (starter pair)
@@ -41,11 +47,20 @@ export function mergeSave(loaded) {
   const base = defaultSaveData();
   if (!loaded || typeof loaded !== 'object') return base;
   const out = base;
-  if (loaded.version !== undefined) out.version = loaded.version;
+  // Migration: any loaded shape (v1, v2, future) is normalized to the CURRENT version.
+  out.version = SAVE_VERSION;
   if (typeof loaded.difficulty === 'number') out.difficulty = loaded.difficulty;
   if (Array.isArray(loaded.unlocked)) out.unlocked = loaded.unlocked.slice();
   if (loaded.results && typeof loaded.results === 'object') {
     out.results = Object.assign({}, loaded.results);
+  }
+  // Phase 5 (Task 5.2): migrate high-score boards; only accept well-formed arrays.
+  if (loaded.highScores && typeof loaded.highScores === 'object') {
+    const boards = {};
+    for (const k of Object.keys(loaded.highScores)) {
+      if (Array.isArray(loaded.highScores[k])) boards[k] = loaded.highScores[k];
+    }
+    out.highScores = boards;
   }
   if (loaded.checkpoint && typeof loaded.checkpoint === 'object') out.checkpoint = loaded.checkpoint;
   if (typeof loaded.credits === 'number' && isFinite(loaded.credits)) out.credits = loaded.credits;
@@ -66,6 +81,31 @@ export function mergeSave(loaded) {
     out.settings.gamepad.remap = Object.assign({}, gBase.remap, gLoaded.remap || {});
   }
   return out;
+}
+
+// ---- Phase 5 (Task 5.2): save-file export / import (plain JSON, human-inspectable) ----
+// Export pretty-prints the CURRENT merged shape; import is the reverse: parse (throws on
+// invalid JSON), merge onto defaults (repairs partial/corrupt files field by field) and
+// return the normalized data. Callers decide transport (browser: file download +
+// <input type="file">; Node tests: plain strings).
+export function exportJSON(data) {
+  return JSON.stringify(mergeSave(data || defaultSaveData()), null, 2);
+}
+
+export function importJSON(text) {
+  if (typeof text !== 'string' || !text.trim()) {
+    throw new Error('import: empty save file');
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch (e) {
+    throw new Error('import: not valid JSON');
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('import: not a save object');
+  }
+  return mergeSave(parsed);
 }
 
 // ---- In-memory backend: module-level store shared by ALL instances (per process). ----
@@ -159,6 +199,21 @@ export class SaveSystem {
   async clear() {
     await this.backend.clear();
     return true;
+  }
+
+  // Phase 5 (Task 5.2): export the whole save (merged current shape) as a JSON string.
+  async export() {
+    const data = await this.load();
+    return exportJSON(data);
+  }
+
+  // Phase 5 (Task 5.2): import a JSON string (validates + repairs), persist it and
+  // return the normalized data. Throws on invalid input - the caller surfaces that.
+  async import(text) {
+    const data = importJSON(text);
+    await this.backend.save(data);
+    this._lastLoaded = data;
+    return data;
   }
 
   // Checkpoint query (Task 2.7): does a saved checkpoint match this mission + stage?

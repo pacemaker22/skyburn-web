@@ -10,6 +10,7 @@ import { InputSystem, ACTION } from './core/input.js';
 import { AudioSystem } from './core/audio.js';
 import { MusicSystem } from './audio/music.js';
 import { SaveSystem, defaultSaveData } from './core/save.js';
+import { recordScore, bestEntry } from './core/leaderboard.js';   // Phase 5 (Task 5.3)
 import { QualityGovernor } from './core/quality.js';   // Task 4.5: auto render scale
 import { Profiler } from './core/profiler.js';         // Task 4.5: dev timing HUD
 import {
@@ -310,6 +311,12 @@ async function boot() {
         saveData.results[res.missionId] = {
           success: res.success, score: res.score, timeSec: res.timeSec, kills: res.kills,
         };
+        // Phase 5 (Tasks 5.2 + 5.3): record the run on the local leaderboard board
+        // (top-5 per mission, persisted in the save; best shows in the menu list).
+        recordScore(saveData.highScores, res.missionId, {
+          score: res.score, timeSec: res.timeSec, difficulty: res.difficulty,
+          date: new Date().toISOString(),
+        });
         if (res.success) {
           const unlock = pendingLaunch.missionDef.unlocks;
           if (unlock && saveData.unlocked.indexOf(unlock) < 0) saveData.unlocked.push(unlock);
@@ -1446,8 +1453,8 @@ async function boot() {
       '<div class="sb-menu-list" id="menu-list"></div>' +
       '<div class="sb-sub">DIFFICULTY</div>' +
       '<div class="sb-row" id="menu-diff"></div>' +
-      '<div class="sb-meta" style="margin-top:10px">Phase 3 - missions M1-M14 across eight ' +
-      'sectors, plus free flight. Checkpoints save at every stage start.</div>' +
+      '<div class="sb-meta" style="margin-top:10px">SKYBURN v1.0 - missions M1-M14 across ' +
+      'eight sectors, plus free flight. Checkpoints save at every stage start.</div>' +
       '</div>';
     const list = menuEl.querySelector('#menu-list');
     for (const def of missions) {
@@ -1455,9 +1462,11 @@ async function boot() {
       btn.className = 'sb-btn';
       const unlocked = saveData.unlocked.indexOf(def.id) >= 0;
       const done = saveData.results[def.id];
+      // Phase 5 (Task 5.3): show the local board's best score next to the last result.
+      const best = bestEntry(saveData.highScores, def.id);
       btn.innerHTML = (unlocked ? def.title : def.title + ' [LOCKED]') +
         '<small>' + (done ? (done.success ? 'CLEARED - ' + done.score : 'attempted') :
-          'reward ' + def.reward) + '</small>';
+          'reward ' + def.reward) + (best ? '  |  best ' + best.score : '') + '</small>';
       if (!unlocked) {
         btn.classList.add('locked');
       } else {
@@ -1625,6 +1634,71 @@ async function boot() {
     accRow.appendChild(mkToggle('AUTO QUALITY', () => settings.autoQuality !== false,
       (v) => { settings.autoQuality = v; quality.enabled = v; }));
     menuEl.querySelector('.sb-panel').appendChild(accRow);
+
+    // ---- Phase 5 (Task 5.2): save data management - export / import / clear ----
+    const dataRow = document.createElement('div');
+    dataRow.className = 'sb-vol-row';
+    const exportBtn = document.createElement('button');
+    exportBtn.className = 'sb-btn';
+    exportBtn.textContent = 'EXPORT SAVE';
+    exportBtn.addEventListener('click', async () => {
+      const text = await save.export();
+      const blob = new Blob([text], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'skyburn-save.json';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+    });
+    dataRow.appendChild(exportBtn);
+
+    const importBtn = document.createElement('button');
+    importBtn.className = 'sb-btn';
+    importBtn.textContent = 'IMPORT SAVE';
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = 'application/json,.json';
+    fileInput.style.display = 'none';
+    fileInput.addEventListener('change', () => {
+      const file = fileInput.files && fileInput.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          await save.import(String(reader.result));
+          location.reload();   // clean reboot: boot() re-merges + rewires every system
+        } catch (e) {
+          audio.beep(180, 0.2, 0.25);
+          importBtn.textContent = 'IMPORT FAILED';
+        }
+      };
+      reader.readAsText(file);
+    });
+    importBtn.addEventListener('click', () => fileInput.click());
+    dataRow.appendChild(importBtn);
+    dataRow.appendChild(fileInput);
+
+    const clearBtn = document.createElement('button');
+    clearBtn.className = 'sb-btn';
+    const clearPaint = () => { clearBtn.textContent = 'CLEAR SAVE'; };
+    clearPaint();
+    clearBtn.addEventListener('click', async () => {
+      // Two-step confirm: first click arms, second wipes (no accidental loss).
+      if (clearBtn.dataset.armed !== '1') {
+        clearBtn.dataset.armed = '1';
+        clearBtn.textContent = 'CLEAR SAVE - CONFIRM?';
+        setTimeout(() => { clearBtn.dataset.armed = '0'; clearPaint(); }, 4000);
+        return;
+      }
+      try { await save.clear(); } catch (e) { /* backend may already be gone */ }
+      location.reload();
+    });
+    dataRow.appendChild(clearBtn);
+
+    menuEl.querySelector('.sb-panel').appendChild(dataRow);
   }
   function menuShow() { menuEl.hidden = false; refreshMenu(); }
   function menuHide() { menuEl.hidden = true; }
